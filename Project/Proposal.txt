@@ -1,0 +1,28 @@
+I will be using the energy efficiency data set, available at https://archive.ics.uci.edu/ml/datasets/Energy+efficiency
+
+About the dataset : The dataset comprises of 768 building shapes based on 8 features. The data aims to predict 2 response variables based on the 8 variables. 
+The 8 attributes are - 
+X1	Relative Compactness 
+X2	Surface Area 
+X3	Wall Area 
+X4	Roof Area 
+X5	Overall Height 
+X6	Orientation 
+X7	Glazing Area 
+X8	Glazing Area Distribution 
+
+The 2 response variables are -
+y1	Heating Load 
+y2	Cooling Load
+
+Shaping the dataset - I intend to explore the dataset and check for any outliers or distribution skews. These will be handled depending on the variation in the data and its possible effect on the prediction. The data appears to be devoid of any missing values, so as suggested, I could insert a few NAs at random and check how that affects the prediction results.
+
+ML Models - 
+Classification Models - 
+Conduct classification using Naive Bayes and k-NN algorithms to classify a set of new data to one of the 768 building shapes.
+
+Regression Model - 
+Apply regression models using multinomial and logistic regression to predict the two response variables. So, a total of 4 models; 2 for each of the variables, y1 and y2.
+
+Model Evaluation - 
+k-fold cross validation may be required for this dataset to avoid over fitting. I believe Confusion matrices and RMSE would be an accurate measure to gauge the efficiency of the model. 
