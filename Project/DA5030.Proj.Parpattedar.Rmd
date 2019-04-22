@@ -30,36 +30,114 @@ str(proj_data)
 
 ```{r}
 library(psych)
-hist((proj_data$Rel_Com))
+# Rounding the feature varirables - Heating and Cooling for multi class classification
+
+proj_data$Heating <- factor(round(proj_data$Heating))
+proj_data$Cooling <- factor(round(proj_data$Cooling))
+# Displaying histograms for all attributes of the dataset
+lapply(proj_data, hist)
+
+# Function to detect outliers
+outliers <- function(x) 
+{
+  for(i in 1:ncol(x))
+  {
+    sd_i <- sd(x[,i])
+    mean_i <- mean(x[,i])
+    print(colnames(x)[i])
+    out = x[x[,i] > 3*sd_i+mean_i | x[,i] < mean_i-3*sd_i, ]
+    if(nrow(out) > 0)
+    {
+      paste("The outliers are -", out)
+    }else
+    {
+      print(paste("No outliers for",colnames(x)[i]))
+    }
+  }
+}
+
+# Detecting outliers in the project dataset
+outliers(proj_data)
+# outliers <- boxplot(proj_data$Heating, plot = FALSE)$out
+
+# Displaying pairwise scatterplots and correlation, and histograms
 pairs.panels(proj_data)
+
+
+```
+
+# Data Cleaning & Shaping
+
+```{r}
+# Detecting NAs
+proj_data[is.na(proj_data),]
+
+# Adding NAs for data imputation since none of them already exist
+# Adding 10 NAs in random positions
+data_w_NAs = proj_data
+for (i in 1:10) {
+  row = sample(1:768, 1)
+  col = sample(1:8, 1)
+  data_w_NAs[row, col] = NA
+}
+t <- aggregate(data = proj_data, Rel_Com ~ Surf_Area, mean, na.rm = TRUE)
+
+
+
+# Normalization function using min-max noramlization
+normalize <- function(x) 
+{
+  return ((x - min(x)) / (max(x) - min(x))) 
+}
+
+# Normalizing the feature variables with continuous values
+cont_v <- c(1:4)
+data_norm <- cbind(normalize(proj_data[,cont_v]), proj_data[, c(5:10)])
+
+
+```
+
+# Model Construction & Evaluation
+```{r}
+# Creating training and validation datasets
+sample <- sample.int(n = nrow(data_norm), size = 0.7*nrow(data_norm), replace = FALSE)
+train_data <- data_norm[sample,]
+validn_data <- data_norm[-sample,]
+```
+
+## Building kNN classification model
+
+```{r}
+getMode <- function(x) {
+  uniq <- unique(x)
+  uniq[which.max(tabulate(match(x, uniq)))]
+}
+
+knn_pred <- function(df, unk, k)
+{
+  n <- nrow(df)
+  d <- numeric(n)
+  for (i in 1:n) 
+  {
+    d[i] <- sqrt(sum((df[i,1:9] - unk[1:9])^2))
+  }
+  o <- order(d)
+  getMode(df[o[1:k], 10])
+}
+
+knn_pred(train_data[,1:8], validn_data[,1:8], 10)
+# new = c(0.86, 588.0, 294.0, 147.00, 7.0, 5, 0.0, 0)
+# new = normalize(new)
+
+
+library(class)
+knn(train_data[,1:8], validn_data[,1:8], train_data[,9], 10)
 ```
 
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE)
-```
 
-## R Markdown
 
-This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
 
-## Slide with Bullets
 
-- Bullet 1
-- Bullet 2
-- Bullet 3
-
-## Slide with R Output
-
-```{r cars, echo = TRUE}
-summary(cars)
-```
-
-## Slide with Plot
-
-```{r pressure}
-plot(pressure)
-```
 
