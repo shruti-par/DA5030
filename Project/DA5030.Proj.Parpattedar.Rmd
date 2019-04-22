@@ -1,0 +1,65 @@
+---
+title: "DA5030.Proj.Parpattedar"
+author: "Shruti Parpattedar"
+date: "April 21, 2019"
+output: slidy_presentation
+---
+
+# Data Acquisition
+X1	Relative Compactness 
+X2	Surface Area 
+X3	Wall Area 
+X4	Roof Area 
+X5	Overall Height 
+X6	Orientation 
+X7	Glazing Area 
+X8	Glazing Area Distribution 
+y1	Heating Load 
+y2	Cooling Load
+```{r}
+library(readxl)
+proj_data <- data.frame(read_excel("ENB2012_data.xlsx"))
+colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area", 
+                         "Roof_Area", "Ov_Hght", "Orient", 
+                         "Glaz_Area", "Glaz_A_Dist", "Heating", "Cooling")
+
+str(proj_data)
+```
+
+# Data Exploration
+
+```{r}
+library(psych)
+hist((proj_data$Rel_Com))
+pairs.panels(proj_data)
+```
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+## R Markdown
+
+This is an R Markdown presentation. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document.
+
+## Slide with Bullets
+
+- Bullet 1
+- Bullet 2
+- Bullet 3
+
+## Slide with R Output
+
+```{r cars, echo = TRUE}
+summary(cars)
+```
+
+## Slide with Plot
+
+```{r pressure}
+plot(pressure)
+```
+
