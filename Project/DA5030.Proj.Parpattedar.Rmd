@@ -24,18 +24,46 @@ colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area",
                          "Glaz_Area", "Glaz_A_Dist", "Heating", "Cooling")
 
 str(proj_data)
+proj_data$Orient <- as.factor(proj_data$Orient)
+
+levels(proj_data$Orient) <- c("North", "East", "South", "West")
+
+proj_data$Glaz_A_Dist <- as.factor(proj_data$Glaz_A_Dist)
+
+levels(proj_data$Glaz_A_Dist) <- c("UnKnown", "Uniform", "North", "East", "South", "West")
+
+proj_data$Glaz_Area <- as.factor(proj_data$Glaz_Area)
+
+levels(proj_data$Glaz_Area) <- c("0%", "10%", "25%", "40%")
+summary(proj_data)
 ```
 
 # Data Exploration
 
+
+Observations from ggplot - 
+- Roof and surface area range is high when the overall height is low,
+- Roof and surface area range is low when the overall height is high
+- There are no observations for high overall height and high surface area and also for low overall height and low surface area.
 ```{r}
 library(psych)
-# Rounding the feature varirables - Heating and Cooling for multi class classification
+library(ggplot2)
+# # Rounding the feature varirables - Heating and Cooling for multi class classification
+# proj_data$Heating <- round(proj_data$Heating)
+# proj_data$Cooling <- round(proj_data$Cooling)
 
-proj_data$Heating <- factor(round(proj_data$Heating))
-proj_data$Cooling <- factor(round(proj_data$Cooling))
 # Displaying histograms for all attributes of the dataset
-lapply(proj_data, hist)
+lapply(proj_data[,c(1:5, 9, 10)], hist)
+hist(log(proj_data[,9]))
+
+# Displaying pairwise scatterplots and correlation, and histograms
+pairs.panels(proj_data)
+
+# Observing relation between Roof Area, Surface Area and Glazing Area and how the Load is distributed using scatter plot
+ggplot(proj_data, aes(x = Cooling, y = Heating), alpha = 0.3)+
+  geom_point(aes(colour = Roof_Area ))+
+  facet_grid(Ov_Hght + Glaz_Area ~ Surf_Area,  space = "free") +
+  ggtitle("Load distribuiton of energy by Roof Area and Surface Area \n by Glazing Area and Overall Height")
 
 # Function to detect outliers
 outliers <- function(x) 
@@ -44,10 +72,11 @@ outliers <- function(x)
   {
     sd_i <- sd(x[,i])
     mean_i <- mean(x[,i])
-    print(colnames(x)[i])
+    
     out = x[x[,i] > 3*sd_i+mean_i | x[,i] < mean_i-3*sd_i, ]
     if(nrow(out) > 0)
     {
+      print(colnames(x)[i])
       paste("The outliers are -", out)
     }else
     {
@@ -58,12 +87,6 @@ outliers <- function(x)
 
 # Detecting outliers in the project dataset
 outliers(proj_data)
-# outliers <- boxplot(proj_data$Heating, plot = FALSE)$out
-
-# Displaying pairwise scatterplots and correlation, and histograms
-pairs.panels(proj_data)
-
-
 ```
 
 # Data Cleaning & Shaping
@@ -80,9 +103,34 @@ for (i in 1:10) {
   col = sample(1:8, 1)
   data_w_NAs[row, col] = NA
 }
-t <- aggregate(data = proj_data, Rel_Com ~ Surf_Area, mean, na.rm = TRUE)
+#t <- aggregate(data = proj_data, Rel_Com ~ Surf_Area, mean, na.rm = TRUE)
 
+getMode <- function(x) {
+  uniq <- unique(x)
+  uniq[which.max(tabulate(match(x, uniq)))]
+}
 
+for(i in 1:nrow(data_w_NAs))
+{
+  for(j in 1:10)
+  {
+    if(j == 6 | j == 7 | j == 8)
+    {
+      if(is.na(data_w_NAs[i,j]))
+      {
+        data_w_NAs[i, j] = getMode(data_w_NAs[,j])
+      }
+    }
+    else
+    {
+      if(is.na(data_w_NAs[i,j]))
+      {
+        paste(data_w_NAs[i,j])
+        data_w_NAs[i, j] = mean(data_w_NAs[,j], na.rm = TRUE)
+      }
+    }
+  }
+}
 
 # Normalization function using min-max noramlization
 normalize <- function(x) 
@@ -91,10 +139,15 @@ normalize <- function(x)
 }
 
 # Normalizing the feature variables with continuous values
-cont_v <- c(1:4)
-data_norm <- cbind(normalize(proj_data[,cont_v]), proj_data[, c(5:10)])
+cont_v <- c(1:5)
+data_norm <- cbind(normalize(proj_data[,cont_v]), proj_data[, c(6:10)])
 
+# PCA on the trained, scaled dataset
+A1 = prcomp(data_norm[,1:5])
 
+# Summary of the results
+summary(A1)
+plot(A1, type="l", main = "Principal Component Analysis")
 ```
 
 # Model Construction & Evaluation
@@ -108,36 +161,200 @@ validn_data <- data_norm[-sample,]
 ## Building kNN classification model
 
 ```{r}
+library(class)
+
 getMode <- function(x) {
   uniq <- unique(x)
   uniq[which.max(tabulate(match(x, uniq)))]
 }
 
-knn_pred <- function(df, unk, k)
+knn_pred <- function(df, unk, col, k)
 {
   n <- nrow(df)
   d <- numeric(n)
   for (i in 1:n) 
   {
-    d[i] <- sqrt(sum((df[i,1:9] - unk[1:9])^2))
+    d[i] <- sqrt(sum((df[i,1:8] - unk[1:8])^2))
   }
   o <- order(d)
-  getMode(df[o[1:k], 10])
+  getMode(df[o[1:k], col])
 }
 
-knn_pred(train_data[,1:8], validn_data[,1:8], 10)
-# new = c(0.86, 588.0, 294.0, 147.00, 7.0, 5, 0.0, 0)
-# new = normalize(new)
+for(i in 1: nrow(validn_data))
+{
+  pred_knn[i] <-  round(knn_pred(train_data, validn_data[i,], 10, 10))
+}
 
+pred_knn <- knn(train_data[,1:8], validn_data[,1:8], train_data[,10], 10)
 
-library(class)
-knn(train_data[,1:8], validn_data[,1:8], train_data[,9], 10)
+new_data <- c(0.69, 735.0, 294.0, 220.50, 3.5, 4, 0.25, 4)
+for(i in 1:8)
+{
+  new_data[i] <- (new_data[i] - min(proj_data[,i])) / (max(proj_data[,i]) -
+                                                               min(proj_data[,i]))
+}
+knn_pred(train_data, new_data, 9, 10)
+knn(train_data[,1:8], new_data, train_data[,10], 10)
 ```
 
+# Decision tree using C5.0
+```{r}
+library(C50)
+c50_m <- C5.0(train_data[1:8], factor(train_data[,9]))
+summary(c50_m)
+pred_c50 <- predict(c50_m, validn_data)
+
+library(rJava)
+library(RWekajars)
+library(RWeka)
+```
+
+# Multiple Regression
+```{r}
+# Dummy Coding
+data_norm$Orient2 <- ifelse(data_norm$Orient == 2, 1, 0)
+data_norm$Orient3 <- ifelse(data_norm$Orient == 3, 1, 0)
+data_norm$Orient4 <- ifelse(data_norm$Orient == 4, 1, 0)
+
+data_norm$Glaz_Area0.1 <- ifelse(data_norm$Glaz_Area == 0.1, 1, 0)
+data_norm$Glaz_Area0.25 <- ifelse(data_norm$Glaz_Area == 0.25, 1, 0)
+data_norm$Glaz_Area0.4 <- ifelse(data_norm$Glaz_Area == 0.4, 1, 0)
+
+data_norm$Glaz_A_Dist1 <- ifelse(data_norm$Glaz_A_Dist == 1, 1, 0)
+data_norm$Glaz_A_Dist2 <- ifelse(data_norm$Glaz_A_Dist == 2, 1, 0)
+data_norm$Glaz_A_Dist3 <- ifelse(data_norm$Glaz_A_Dist == 3, 1, 0)
+data_norm$Glaz_A_Dist4 <- ifelse(data_norm$Glaz_A_Dist == 4, 1, 0)
+data_norm$Glaz_A_Dist5 <- ifelse(data_norm$Glaz_A_Dist == 5, 1, 0)
+
+train_data <- data_norm[sample,]
+validn_data <- data_norm[-sample,]
+
+model <- lm(Heating ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
+                     Orient2 + Orient4 + Orient3 + Glaz_A_Dist5 + Glaz_A_Dist4 +
+                     Glaz_A_Dist1 + Glaz_A_Dist3 + Glaz_A_Dist2 + Glaz_Area0.4 +
+                     Glaz_Area0.25 + Glaz_Area0.1, 
+                   data = train_data)
+
+model <- step(model, direction = "backward")
+summary(model)
+pred_lm <- predict(model, validn_data)
+
+length(validn_data[round(pred_lm) == validn_data$Heating, ])
+```
+
+```{r}
+sample <- sample.int(n = nrow(proj_data), size = 0.7*nrow(proj_data), replace = FALSE)
+train_data <- proj_data[sample, 1:9]
+validn_data <- proj_data[-sample,]
+
+library(neuralnet)
+library(nnet)
+train <- cbind(proj_data[, 1:8], class.ind(as.factor(proj_data$Heating)))
+nn <- neuralnet(Heating ~ .,
+                data = train_data,
+                hidden = c(13, 10, 3),
+                act.fct = "logistic",
+                linear.output = FALSE,
+                lifesign = "minimal")
+
+predict(nn, validn_data, type = "class")
+pr.nn <- compute(nn, train_data[, 1:9])
+pr.nn$net.result
+pr.nn_2 <- max.col(pr.nn$net.result)
+mean(pr.nn_2 == train_data$Heating)
+```
+```{r}
+library(kernlab)
+cl <- ksvm(Heating ~ ., train_data, kernel = "linear")
+cl
+
+pred_svm <- predict(cl, validn_data)
+table(round(pred_svm, 2) == validn_data$Heating)
 
 
+library(caret)
+ctrl <- trainControl(method = "cv", 
+                     n = 5,	
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+
+nnet_grid <- expand.grid(decay = c(0.5, 0.1), 
+                         size = c(5, 6, 7))
+
+# Using the train function from the caret package with the nnet method
+model_nnet <- train(Heating ~ .,
+              train_data,
+              method = "nnet", 
+              maxit = 1000, 
+              tuneGrid = nnet_grid,
+              trControl = ctrl,
+              preProc = c("center","scale"),  
+              metric = "ROC")  
+model_nnet
+
+```
+
+```{r}
+library(cclust)
+L1 = list()
+totw1 = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  # Using the cclust function to cluster the data
+  L1[[i]] = cclust(as.matrix(train_data[,1:8]), 3, 
+                   method = "kmeans", dist = "euclidean")
+  totw1[[i]] = sum(L1[[i]]$withinss)
+}
+
+# Finding the minimal total WCSS
+min_ss = min(unlist(totw1))
+
+for (i in 1:100){
+  if (totw1[[i]] == min_ss){
+    pred_train1 = predict(L1[[i]], newdata = as.matrix(train_data[,1:8]))
+    pred_test1 = predict(L1[[i]], newdata = as.matrix(validn_data[,1:8]))
+    # print(i)
+    # print(table(train_data[,1],pred_train1$cluster))
+    # print(table(test_data[,1],pred_test1$cluster))
+  }
+}
+
+# Choosing L1[[3]]
+chosen_pred1train = predict(L1[[3]], newdata = as.matrix(train_data[,1:8]))
+chosen_pred1test = predict(L1[[3]], newdata = as.matrix(validn_data[,1:8]))
+
+table(train_data[,9],chosen_pred1train$cluster)
+table(validn_data[,9], chosen_pred1test$cluster)
+
+# Assigning accuracies
+acc_train[1] <- mean(train_data[,1] == chosen_pred1train$cluster)
+acc_test[1] <- mean(validn_data[,1] == chosen_pred1test$cluster)
+L1[[3]]$centers
+```
+
+```{r}
+library(readxl)
+data_nb <- data.frame(read_excel("ENB2012_data.xlsx"), stringsAsFactors = TRUE)
+colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area", 
+                         "Roof_Area", "Ov_Hght", "Orient", 
+                         "Glaz_Area", "Glaz_A_Dist", "Heating", "Cooling")
+str(data_nb)
 
 
+data_nb$bin1 <- ifelse(data_nb$Y1>=6 & data_nb$Y1 <= 17, 1, 0)
+data_nb$bin2 <- ifelse(data_nb$Y1>=18 & data_nb$Y1 <= 30, 1, 0)
+```
 
+```{r}
+library(e1071)
+train_nb <- data_nb[sample, c(1:8, 11, 12)]
+validn_nb <- data_nb[-sample, c(1:8, 11, 12)]
 
+nb_cl <- naiveBayes(train_nb[,1:8], train_nb[,c(9,10)])
+
+pred_nb <- predict(nb_cl, validn_nb[,1:8], type = "class")
+
+table(pred_nb == validn_nb[,9])
+```
 
