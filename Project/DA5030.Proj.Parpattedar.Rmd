@@ -26,16 +26,17 @@ colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area",
 str(proj_data)
 proj_data$Orient <- as.factor(proj_data$Orient)
 
-levels(proj_data$Orient) <- c("North", "East", "South", "West")
+levels(proj_data$Orient) <- 1:4
 
 proj_data$Glaz_A_Dist <- as.factor(proj_data$Glaz_A_Dist)
 
-levels(proj_data$Glaz_A_Dist) <- c("UnKnown", "Uniform", "North", "East", "South", "West")
+levels(proj_data$Glaz_A_Dist) <- 0:5
 
 proj_data$Glaz_Area <- as.factor(proj_data$Glaz_Area)
 
-levels(proj_data$Glaz_Area) <- c("0%", "10%", "25%", "40%")
+levels(proj_data$Glaz_Area) <- 0:3
 summary(proj_data)
+
 ```
 
 # Data Exploration
@@ -180,33 +181,23 @@ knn_pred <- function(df, unk, col, k)
   getMode(df[o[1:k], col])
 }
 
+pred_knn_heating <- as.numeric(nrow(validn_data))
+pred_knn_cooling <- as.numeric(nrow(validn_data))
 for(i in 1: nrow(validn_data))
 {
-  pred_knn[i] <-  round(knn_pred(train_data, validn_data[i,], 10, 10))
+  pred_knn_heating[i] <-  round(knn_pred(train_data, validn_data[i,], 9, 10))
+  pred_knn_cooling[i] <- round(knn_pred(train_data, validn_data[i,], 10, 10))
 }
 
-pred_knn <- knn(train_data[,1:8], validn_data[,1:8], train_data[,10], 10)
-
 new_data <- c(0.69, 735.0, 294.0, 220.50, 3.5, 4, 0.25, 4)
-for(i in 1:8)
+for(i in 1:5)
 {
   new_data[i] <- (new_data[i] - min(proj_data[,i])) / (max(proj_data[,i]) -
                                                                min(proj_data[,i]))
 }
-knn_pred(train_data, new_data, 9, 10)
-knn(train_data[,1:8], new_data, train_data[,10], 10)
-```
-
-# Decision tree using C5.0
-```{r}
-library(C50)
-c50_m <- C5.0(train_data[1:8], factor(train_data[,9]))
-summary(c50_m)
-pred_c50 <- predict(c50_m, validn_data)
-
-library(rJava)
-library(RWekajars)
-library(RWeka)
+# knn_pred(train_data, new_data, 9, 10)
+# knn(train_data[,1:8], new_data, train_data[,10], 10)
+table(pred_knn == validn_data[,9])
 ```
 
 # Multiple Regression
@@ -229,132 +220,78 @@ data_norm$Glaz_A_Dist5 <- ifelse(data_norm$Glaz_A_Dist == 5, 1, 0)
 train_data <- data_norm[sample,]
 validn_data <- data_norm[-sample,]
 
-model <- lm(Heating ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
+model_heating <- lm(Heating ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
                      Orient2 + Orient4 + Orient3 + Glaz_A_Dist5 + Glaz_A_Dist4 +
                      Glaz_A_Dist1 + Glaz_A_Dist3 + Glaz_A_Dist2 + Glaz_Area0.4 +
                      Glaz_Area0.25 + Glaz_Area0.1, 
                    data = train_data)
 
-model <- step(model, direction = "backward")
-summary(model)
-pred_lm <- predict(model, validn_data)
+model_heating <- step(model_heating, direction = "backward")
+summary(model_heating)
+pred_lm_heating <- predict(model_heating, validn_data)
 
 length(validn_data[round(pred_lm) == validn_data$Heating, ])
-```
 
-```{r}
-sample <- sample.int(n = nrow(proj_data), size = 0.7*nrow(proj_data), replace = FALSE)
-train_data <- proj_data[sample, 1:9]
-validn_data <- proj_data[-sample,]
+model_cooling <- lm(Cooling ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
+                     Orient2 + Orient4 + Orient3 + Glaz_A_Dist5 + Glaz_A_Dist4 +
+                     Glaz_A_Dist1 + Glaz_A_Dist3 + Glaz_A_Dist2 + Glaz_Area0.4 +
+                     Glaz_Area0.25 + Glaz_Area0.1, 
+                   data = train_data)
 
-library(neuralnet)
-library(nnet)
-train <- cbind(proj_data[, 1:8], class.ind(as.factor(proj_data$Heating)))
-nn <- neuralnet(Heating ~ .,
-                data = train_data,
-                hidden = c(13, 10, 3),
-                act.fct = "logistic",
-                linear.output = FALSE,
-                lifesign = "minimal")
-
-predict(nn, validn_data, type = "class")
-pr.nn <- compute(nn, train_data[, 1:9])
-pr.nn$net.result
-pr.nn_2 <- max.col(pr.nn$net.result)
-mean(pr.nn_2 == train_data$Heating)
-```
-```{r}
-library(kernlab)
-cl <- ksvm(Heating ~ ., train_data, kernel = "linear")
-cl
-
-pred_svm <- predict(cl, validn_data)
-table(round(pred_svm, 2) == validn_data$Heating)
-
-
-library(caret)
-ctrl <- trainControl(method = "cv", 
-                     n = 5,	
-                     summaryFunction = twoClassSummary,
-                     classProbs = TRUE)
-
-nnet_grid <- expand.grid(decay = c(0.5, 0.1), 
-                         size = c(5, 6, 7))
-
-# Using the train function from the caret package with the nnet method
-model_nnet <- train(Heating ~ .,
-              train_data,
-              method = "nnet", 
-              maxit = 1000, 
-              tuneGrid = nnet_grid,
-              trControl = ctrl,
-              preProc = c("center","scale"),  
-              metric = "ROC")  
-model_nnet
-
-```
-
-```{r}
-library(cclust)
-L1 = list()
-totw1 = list()
-
-for (i in 1:100) {
-  set.seed(i)
-  # Using the cclust function to cluster the data
-  L1[[i]] = cclust(as.matrix(train_data[,1:8]), 3, 
-                   method = "kmeans", dist = "euclidean")
-  totw1[[i]] = sum(L1[[i]]$withinss)
-}
-
-# Finding the minimal total WCSS
-min_ss = min(unlist(totw1))
-
-for (i in 1:100){
-  if (totw1[[i]] == min_ss){
-    pred_train1 = predict(L1[[i]], newdata = as.matrix(train_data[,1:8]))
-    pred_test1 = predict(L1[[i]], newdata = as.matrix(validn_data[,1:8]))
-    # print(i)
-    # print(table(train_data[,1],pred_train1$cluster))
-    # print(table(test_data[,1],pred_test1$cluster))
-  }
-}
-
-# Choosing L1[[3]]
-chosen_pred1train = predict(L1[[3]], newdata = as.matrix(train_data[,1:8]))
-chosen_pred1test = predict(L1[[3]], newdata = as.matrix(validn_data[,1:8]))
-
-table(train_data[,9],chosen_pred1train$cluster)
-table(validn_data[,9], chosen_pred1test$cluster)
-
-# Assigning accuracies
-acc_train[1] <- mean(train_data[,1] == chosen_pred1train$cluster)
-acc_test[1] <- mean(validn_data[,1] == chosen_pred1test$cluster)
-L1[[3]]$centers
-```
-
-```{r}
-library(readxl)
-data_nb <- data.frame(read_excel("ENB2012_data.xlsx"), stringsAsFactors = TRUE)
-colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area", 
-                         "Roof_Area", "Ov_Hght", "Orient", 
-                         "Glaz_Area", "Glaz_A_Dist", "Heating", "Cooling")
-str(data_nb)
-
-
-data_nb$bin1 <- ifelse(data_nb$Y1>=6 & data_nb$Y1 <= 17, 1, 0)
-data_nb$bin2 <- ifelse(data_nb$Y1>=18 & data_nb$Y1 <= 30, 1, 0)
+model_cooling <- step(model_cooling, direction = "backward")
+summary(model_cooling)
+pred_lm_heating <- predict(model_cooling, validn_data)
 ```
 
 ```{r}
 library(e1071)
-train_nb <- data_nb[sample, c(1:8, 11, 12)]
-validn_nb <- data_nb[-sample, c(1:8, 11, 12)]
+# Heating
+# Full Data set used for cross validation
+knn.cross <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,9])), k = 2:20,tunecontrol=tune.control(sampling = "cross"), cross=10)
 
-nb_cl <- naiveBayes(train_nb[,1:8], train_nb[,c(9,10)])
+# Summarize the resampling results set
+summary(knn.cross)
+plot(knn.cross)
 
-pred_nb <- predict(nb_cl, validn_nb[,1:8], type = "class")
+# Cooling
+# Full Data set used for cross validation
+knn.cross <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,10])), k = 2:20,tunecontrol=tune.control(sampling = "cross"), cross=10)
 
-table(pred_nb == validn_nb[,9])
+# Summarize the resampling results set
+summary(knn.cross)
+plot(knn.cross)
+```
+
+# Tuning the models
+```{r}
+library(e1071)
+# Heating
+# Resampling using bootstrap
+knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,9])), k = 2:20,tunecontrol=tune.control(sampling = "boot"), boot=10)
+
+# Summarize the resampling results set
+summary(knn.boot)
+plot(knn.boot)
+
+# Cooling
+# Resampling using bootstrap
+knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,10])), k = 2:20,tunecontrol=tune.control(sampling = "boot"), boot=10)
+
+# Summarize the resampling results set
+summary(knn.boot)
+plot(knn.boot)
+
+```
+
+# Comparison using RMSE
+```{r}
+calc_RMSE <- function(orig, pred)
+{
+  sqrt(mean((orig-pred)^2))
+}
+
+RMSE_knn_heating <- calc_RMSE(validn_data[,9], pred_knn_heating)
+RMSE_knn_cooling <- calc_RMSE(validn_data[,10], pred_knn_cooling)
+
 ```
 
