@@ -2,20 +2,22 @@
 title: "DA5030.Proj.Parpattedar"
 author: "Shruti Parpattedar"
 date: "April 21, 2019"
-output: slidy_presentation
+output: pdf_document
 ---
 
 # Data Acquisition
 X1	Relative Compactness 
-X2	Surface Area 
-X3	Wall Area 
-X4	Roof Area 
-X5	Overall Height 
-X6	Orientation 
-X7	Glazing Area 
-X8	Glazing Area Distribution 
-y1	Heating Load 
-y2	Cooling Load
+X2	Surface Area - m2
+X3	Wall Area - m2
+X4	Roof Area - m2
+X5	Overall Height - m 
+X6	Orientation - 2:North, 3:East, 4:South, 5:West
+X7	Glazing Area - 0%, 10%, 25%, 40% (of floor area)
+X8	Glazing Area Distribution - 1:Uniform, 2:North, 3:East, 4:South, 5:West
+y1	Heating Load - kWh/m²
+y2	Cooling Load -  kWh/m²
+
+Loading data from an excel sheet. Considering all features as continuous.
 ```{r}
 library(readxl)
 proj_data <- data.frame(read_excel("ENB2012_data.xlsx"))
@@ -24,34 +26,24 @@ colnames(proj_data) <- c("Rel_Com", "Surf_Area", "Wall_Area",
                          "Glaz_Area", "Glaz_A_Dist", "Heating", "Cooling")
 
 str(proj_data)
-proj_data$Orient <- as.factor(proj_data$Orient)
-
-levels(proj_data$Orient) <- 1:4
-
-proj_data$Glaz_A_Dist <- as.factor(proj_data$Glaz_A_Dist)
-
-levels(proj_data$Glaz_A_Dist) <- 0:5
-
-proj_data$Glaz_Area <- as.factor(proj_data$Glaz_Area)
-
-levels(proj_data$Glaz_Area) <- 0:3
 summary(proj_data)
-
 ```
 
 # Data Exploration
+## Exploratory data plots
+Displaying histogram for various features.
 
 
 Observations from ggplot - 
 - Roof and surface area range is high when the overall height is low,
 - Roof and surface area range is low when the overall height is high
 - There are no observations for high overall height and high surface area and also for low overall height and low surface area.
+
+## Outlier Detection
+Considering 3 std dev from mean to be an outlier. Using this, no outliers were found.
 ```{r}
 library(psych)
 library(ggplot2)
-# # Rounding the feature varirables - Heating and Cooling for multi class classification
-# proj_data$Heating <- round(proj_data$Heating)
-# proj_data$Cooling <- round(proj_data$Cooling)
 
 # Displaying histograms for all attributes of the dataset
 lapply(proj_data[,c(1:5, 9, 10)], hist)
@@ -91,7 +83,11 @@ outliers(proj_data)
 ```
 
 # Data Cleaning & Shaping
+No NAs were found so adding NAs at random and then imputing them.
 
+Normalizing the feature variables using min-max normalization.
+
+Implementing principal component analysis.
 ```{r}
 # Detecting NAs
 proj_data[is.na(proj_data),]
@@ -142,6 +138,7 @@ normalize <- function(x)
 # Normalizing the feature variables with continuous values
 cont_v <- c(1:5)
 data_norm <- cbind(normalize(proj_data[,cont_v]), proj_data[, c(6:10)])
+data_norm_w_NA <- cbind(normalize(data_w_NAs[,cont_v]), data_w_NAs[, c(6:10)])
 
 # PCA on the trained, scaled dataset
 A1 = prcomp(data_norm[,1:5])
@@ -152,42 +149,41 @@ plot(A1, type="l", main = "Principal Component Analysis")
 ```
 
 # Model Construction & Evaluation
+Cannot implement the hold-out method since unique combinations of data are observed in the dataset.
 ```{r}
 # Creating training and validation datasets
-sample <- sample.int(n = nrow(data_norm), size = 0.7*nrow(data_norm), replace = FALSE)
-train_data <- data_norm[sample,]
-validn_data <- data_norm[-sample,]
+# sample <- sample.int(n = nrow(data_norm), size = 0.7*nrow(data_norm), replace = FALSE)
+# train_data <- data_norm[sample,]
+# validn_data <- data_norm[-sample,]
 ```
 
-## Building kNN classification model
-
+## Building kNN regression model
+Building a k Nearest Neighbors regression model to predict response values of the given data.
 ```{r}
-library(class)
-
-getMode <- function(x) {
-  uniq <- unique(x)
-  uniq[which.max(tabulate(match(x, uniq)))]
-}
-
-knn_pred <- function(df, unk, col, k)
+# Regression version of kNN
+kNN.reg <- function(new_data, target_data, train_data, k)
 {
-  n <- nrow(df)
-  d <- numeric(n)
+  n <- nrow(train_data)
+  d <- rep(0,n)
   for (i in 1:n) 
   {
-    d[i] <- sqrt(sum((df[i,1:8] - unk[1:8])^2))
+    d[i] <- sqrt(sum((train_data[i,1:8] - new_data[1:8])^2))
   }
   o <- order(d)
-  getMode(df[o[1:k], col])
+  m <- mean(target_data[o[1:k]]) 
+  return(m)
 }
 
-pred_knn_heating <- as.numeric(nrow(validn_data))
-pred_knn_cooling <- as.numeric(nrow(validn_data))
-for(i in 1: nrow(validn_data))
+for(i in 1: nrow(data_norm))
 {
-  pred_knn_heating[i] <-  round(knn_pred(train_data, validn_data[i,], 9, 10))
-  pred_knn_cooling[i] <- round(knn_pred(train_data, validn_data[i,], 10, 10))
+  data_norm$Heating_reg_kNN[i] <- kNN.reg(data_norm[i,], data_norm[,9], data_norm[,1:8], 10)
+  data_norm$Cooling_reg_kNN[i] <- kNN.reg(data_norm[i,], data_norm[,10], data_norm[,1:8], 10)
+  data_norm_w_NA$Heating_reg_kNN[i] <- kNN.reg(data_norm_w_NA[i,], data_norm_w_NA[,9], data_norm_w_NA[,1:8], 10)
+  data_norm_w_NA$Cooling_reg_kNN[i] <- kNN.reg(data_norm_w_NA[i,], data_norm_w_NA[,10], data_norm_w_NA[,1:8], 10)
 }
+
+# data_norm_w_NA$Heating_reg_kNN <- reg_knn_heating_NA 
+# data_norm_w_NA$Cooling_reg_kNN <- reg_knn_cooling_NA
 
 new_data <- c(0.69, 735.0, 294.0, 220.50, 3.5, 4, 0.25, 4)
 for(i in 1:5)
@@ -195,59 +191,45 @@ for(i in 1:5)
   new_data[i] <- (new_data[i] - min(proj_data[,i])) / (max(proj_data[,i]) -
                                                                min(proj_data[,i]))
 }
-# knn_pred(train_data, new_data, 9, 10)
-# knn(train_data[,1:8], new_data, train_data[,10], 10)
-table(pred_knn == validn_data[,9])
+
+# Predicting response values of new data
+kNN.reg(new_data, data_norm$Heating, data_norm[,1:8], 10)
+kNN.reg(new_data, data_norm$Cooling, data_norm[,1:8], 10)
+
 ```
 
 # Multiple Regression
+Implementation of multiple regression for the two response variables.
 ```{r}
-# Dummy Coding
-data_norm$Orient2 <- ifelse(data_norm$Orient == 2, 1, 0)
-data_norm$Orient3 <- ifelse(data_norm$Orient == 3, 1, 0)
-data_norm$Orient4 <- ifelse(data_norm$Orient == 4, 1, 0)
-
-data_norm$Glaz_Area0.1 <- ifelse(data_norm$Glaz_Area == 0.1, 1, 0)
-data_norm$Glaz_Area0.25 <- ifelse(data_norm$Glaz_Area == 0.25, 1, 0)
-data_norm$Glaz_Area0.4 <- ifelse(data_norm$Glaz_Area == 0.4, 1, 0)
-
-data_norm$Glaz_A_Dist1 <- ifelse(data_norm$Glaz_A_Dist == 1, 1, 0)
-data_norm$Glaz_A_Dist2 <- ifelse(data_norm$Glaz_A_Dist == 2, 1, 0)
-data_norm$Glaz_A_Dist3 <- ifelse(data_norm$Glaz_A_Dist == 3, 1, 0)
-data_norm$Glaz_A_Dist4 <- ifelse(data_norm$Glaz_A_Dist == 4, 1, 0)
-data_norm$Glaz_A_Dist5 <- ifelse(data_norm$Glaz_A_Dist == 5, 1, 0)
-
-train_data <- data_norm[sample,]
-validn_data <- data_norm[-sample,]
-
+# Model for heating 
 model_heating <- lm(Heating ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
-                     Orient2 + Orient4 + Orient3 + Glaz_A_Dist5 + Glaz_A_Dist4 +
-                     Glaz_A_Dist1 + Glaz_A_Dist3 + Glaz_A_Dist2 + Glaz_Area0.4 +
-                     Glaz_Area0.25 + Glaz_Area0.1, 
-                   data = train_data)
+                     Orient + Glaz_A_Dist + Glaz_Area, data = data_norm)
 
 model_heating <- step(model_heating, direction = "backward")
 summary(model_heating)
-pred_lm_heating <- predict(model_heating, validn_data)
+data_norm$Heating_lm <- predict(model_heating, data_norm)
+data_norm_w_NA$Heating_lm <- predict(model_heating, data_norm_w_NA)
 
-length(validn_data[round(pred_lm) == validn_data$Heating, ])
-
+# Model for cooling
 model_cooling <- lm(Cooling ~ Rel_Com + Surf_Area + Wall_Area + Roof_Area + Ov_Hght +
-                     Orient2 + Orient4 + Orient3 + Glaz_A_Dist5 + Glaz_A_Dist4 +
-                     Glaz_A_Dist1 + Glaz_A_Dist3 + Glaz_A_Dist2 + Glaz_Area0.4 +
-                     Glaz_Area0.25 + Glaz_Area0.1, 
-                   data = train_data)
+                     Orient + Glaz_A_Dist + Glaz_Area, data = data_norm)
 
 model_cooling <- step(model_cooling, direction = "backward")
 summary(model_cooling)
-pred_lm_heating <- predict(model_cooling, validn_data)
+data_norm$Cooling_lm <- predict(model_cooling, data_norm)
+data_norm_w_NA$Cooling_lm <- predict(model_cooling, data_norm_w_NA)
+
 ```
 
+# Evaluation with k-fold cross-validation
+Implementing k-fold cross-validation
 ```{r}
 library(e1071)
 # Heating
 # Full Data set used for cross validation
-knn.cross <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,9])), k = 2:20,tunecontrol=tune.control(sampling = "cross"), cross=10)
+knn.cross <- tune.knn(x = data_norm[,1:8], y = factor(data_norm[,9]), 
+                      k = 2:20,tunecontrol=tune.control(sampling = "cross"), 
+                      cross=10)
 
 # Summarize the resampling results set
 summary(knn.cross)
@@ -255,7 +237,9 @@ plot(knn.cross)
 
 # Cooling
 # Full Data set used for cross validation
-knn.cross <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,10])), k = 2:20,tunecontrol=tune.control(sampling = "cross"), cross=10)
+knn.cross <- tune.knn(x = data_norm[,1:8], y = factor(proj_data[,10]), 
+                      k = 2:20,tunecontrol=tune.control(sampling = "cross"), 
+                      cross=10)
 
 # Summarize the resampling results set
 summary(knn.cross)
@@ -263,11 +247,14 @@ plot(knn.cross)
 ```
 
 # Tuning the models
+Tuning the kNN model with bootstrap sampling
 ```{r}
 library(e1071)
 # Heating
 # Resampling using bootstrap
-knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,9])), k = 2:20,tunecontrol=tune.control(sampling = "boot"), boot=10)
+knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,9])), 
+                     k = 2:20,tunecontrol=tune.control(sampling = "boot"), 
+                     boot=10)
 
 # Summarize the resampling results set
 summary(knn.boot)
@@ -275,23 +262,42 @@ plot(knn.boot)
 
 # Cooling
 # Resampling using bootstrap
-knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,10])), k = 2:20,tunecontrol=tune.control(sampling = "boot"), boot=10)
+knn.boot <- tune.knn(x = proj_data[,1:8], y = factor(round(proj_data[,10])), 
+                     k = 2:20,tunecontrol=tune.control(sampling = "boot"), 
+                     boot=10)
 
 # Summarize the resampling results set
 summary(knn.boot)
 plot(knn.boot)
-
 ```
 
 # Comparison using RMSE
+Comparing the various models using RMSE.
 ```{r}
 calc_RMSE <- function(orig, pred)
 {
   sqrt(mean((orig-pred)^2))
 }
 
-RMSE_knn_heating <- calc_RMSE(validn_data[,9], pred_knn_heating)
-RMSE_knn_cooling <- calc_RMSE(validn_data[,10], pred_knn_cooling)
+RMSE_knn_heating <- calc_RMSE(data_norm$Heating, data_norm$Heating_reg_kNN)
+RMSE_knn_cooling <- calc_RMSE(data_norm$Cooling, data_norm$Cooling_reg_kNN)
+RMSE_lm_heating <- calc_RMSE(data_norm$Heating, data_norm$Heating_reg_kNN)
+RMSE_lm_cooling <- calc_RMSE(data_norm$Cooling, data_norm$Cooling_reg_kNN)
+
+crit = c("RMSE_knn_heating", "RMSE_knn_cooling", "RMSE_lm_heating", "RMSE_lm_cooling")
+rmses = c(RMSE_knn_heating, RMSE_knn_cooling, RMSE_lm_heating, RMSE_lm_cooling)
+Summary <- data.frame(Criteria = crit, RMSE = rmses)
+Summary
+
+RMSE_knn_heating_NA <- calc_RMSE(data_norm_w_NA$Heating, data_norm_w_NA$Heating_reg_kNN)
+RMSE_knn_cooling_NA <- calc_RMSE(data_norm_w_NA$Cooling, data_norm_w_NA$Cooling_reg_kNN)
+RMSE_lm_heating_NA <- calc_RMSE(data_norm_w_NA$Heating, data_norm_w_NA$Heating_reg_kNN)
+RMSE_lm_cooling_NA <- calc_RMSE(data_norm_w_NA$Cooling, data_norm_w_NA$Cooling_reg_kNN)
+
+crit = c("RMSE_knn_heating_NA", "RMSE_knn_cooling_NA", "RMSE_lm_heating_NA", "RMSE_lm_cooling_NA")
+rmses = c(RMSE_knn_heating_NA, RMSE_knn_cooling_NA, RMSE_lm_heating_NA, RMSE_lm_cooling_NA)
+Summary_NA <- data.frame(Criteria = crit, RMSE = rmses)
+Summary_NA
 
 ```
 
