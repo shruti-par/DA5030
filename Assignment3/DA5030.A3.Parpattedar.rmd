@@ -1,0 +1,138 @@
+---
+title: "DA5030.A3.Parpattedar"
+author: "Shruti Parpattedar"
+date: "February 3, 2019"
+output: pdf_document
+---
+
+# Question 1
+Downloading and loading the dataset into R
+
+```{r Question1}
+#setwd("D:/NEU/DA5030/Assignment3")
+prc <- read.csv("prostate_cancer.csv", stringsAsFactors = FALSE)
+```
+
+# Question 2
+Preparing and exploring the data
+
+```{r Question2}
+str(prc)
+prc <- prc[-1]
+table(prc$diagnosis_result)
+prc$diagnosis <- factor(prc$diagnosis_result, levels = c("B", "M"), 
+                        labels = c("Benign", "Malignant"))
+round(prop.table(table(prc$diagnosis)) * 100, digits = 1)
+```
+
+Normalizing numeric data
+
+```{r}
+normalize <- function(x) {
+return ((x - min(x)) / (max(x) - min(x))) }
+prc_n <- as.data.frame(lapply(prc[2:9], normalize))
+summary(prc_n$radius)
+```
+
+Creating training and test data set
+
+```{r}
+prc_train <- prc_n[1:65,]
+prc_test <- prc_n[66:100,]
+prc_train_labels <- prc[1:65, 1]
+prc_test_labels <- prc[66:100, 1]
+
+```
+
+Training a model on data
+
+```{r}
+#install.packages(“class”)
+library(class)
+prc_test_pred <- knn(train = prc_train, test = prc_test,cl = prc_train_labels, k=10)
+```
+
+Evaluate the model performance
+
+Accuracy - ((TN+TP)/35) = 0.63%
+```{r}
+#install.packages("gmodels")
+library(gmodels)
+CrossTable(prc_test_labels, prc_test_pred, prop.chisq = FALSE)
+```
+
+Improve the performance of the model
+
+Using k=9, I am getting 0 false negatives which is an improvement over 1 false negative which was being observed k=10.
+
+Accuracy - ((TN+TP)/35) = 0.69%
+
+Using k=11, I am getting 0 false negatives but 14 false positives.
+
+Accuracy - ((TN+TP)/35) = 0.6%
+```{r}
+prc_test_pred2 <- knn(train = prc_train, test = prc_test,cl = prc_train_labels, k=9)
+CrossTable(prc_test_labels, prc_test_pred2, prop.chisq = FALSE)
+
+prc_test_pred3 <- knn(train = prc_train, test = prc_test,cl = prc_train_labels, k=11)
+CrossTable(prc_test_labels, prc_test_pred3, prop.chisq = FALSE)
+```
+
+# Question 3
+Using the kNN algorithm from the caret package.
+
+```{r Question3}
+library(caret)
+library(doSNOW)
+library(xgboost)
+ 
+# Loading the data onto a different variable in R and removing the id column from it.
+data <- read.csv("prostate_cancer.csv", stringsAsFactors = FALSE)
+#str(data)
+data <- data[,-1]
+
+# Using the diagnosis_result column as a factor instead of a plain character.
+data$diagnosis_result <- as.factor(data$diagnosis_result)
+
+# Partioning the data into a 65-35 training and testing dataset.
+set.seed(300)
+indexes <- createDataPartition(data$diagnosis_result, p = 0.64, list = FALSE)
+data.train <- data[indexes,]
+data.test <- data[-indexes,]
+#prop.table(table(data$diagnosis_result))
+#prop.table(table(data.train$diagnosis_result))
+#prop.table(table(data.test$diagnosis_result))
+
+trainX <- data.train[,names(data.train) != "diagnosis_result"]
+preProcValues <- preProcess(x = trainX, method = c("center","scale"))
+
+# Training and training control from the dataset.
+set.seed(400)
+train.control <- trainControl(method = "repeatedcv", repeats = 3)
+
+# Finding the knn fit for the training set and then plotting it.
+knnFit <- train(diagnosis_result ~ ., 
+                data = data.train, 
+                method = "knn", 
+                trControl = train.control, 
+                preProcess = c("center","scale"), 
+                tuneLength = 20)
+knnFit
+
+plot(knnFit)
+
+# Using the model to predict data on the testing set.
+knnPredict <- predict(knnFit, newdata = data.test)
+knnPredict
+```
+
+# Question 4
+Generting confusion matrices for the kNN predictions made using the two algorithms above.
+
+```{r Question4}
+prc_test_labels <- as.factor(prc_test_labels)
+confusionMatrix(prc_test_pred, prc_test_labels)
+
+confusionMatrix(knnPredict, data.test$diagnosis_result)
+```
+

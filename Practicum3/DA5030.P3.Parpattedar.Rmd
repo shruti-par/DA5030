@@ -1,0 +1,919 @@
+---
+title: "DA5030.P3.Parpattedar"
+author: "Shruti Parpattedar"
+date: "April 4, 2019"
+output: pdf_document
+---
+
+# Problem 1
+
+## Question 1
+Loading the bank dataset.
+```{r Question1.1}
+bank <- read.csv("bank.csv", sep = ";")
+```
+
+## Question 2
+Exploring the dataset to check for distributional skew. 
+```{r Question1.2}
+library(psych)
+str(bank)
+# pairs.panels(Q1_data[,1:8])
+# pairs.panels(data_Q1[,9:17])
+hist(log(bank$duration))
+```
+
+## Question 3
+Building a classification model svm from the caret package.
+
+The confusion matrix shows approximately 89% accuracy in the model.
+```{r Question1.3}
+library(caret)
+bank$y <- as.factor(bank$y)
+levels(bank$y) <- make.names(levels(bank$y))
+
+set.seed(1)
+# Creating a partition such that 2/3rd data is used in training the model and the
+# remaining in testing it.
+partition <- createDataPartition(y = bank$y, p = 0.66, list = FALSE)
+train <- bank[partition,]
+test <- bank[-partition,]
+
+# Checking if the proportion of outcomes is maintained in the subsets as well. 
+prop.table(table(bank$y))
+prop.table(table(test$y))
+prop.table(table(train$y))
+
+set.seed(1492)
+# Using the trainControl function to control the computational nuances of the 
+# train function
+ctrl <- trainControl(method = "cv", 
+                     n = 3,	
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+
+svm_grid <- expand.grid(sigma = c(0.01, 0.05),
+                        C = c(0.75, 1, 1.25))
+
+# Using the train function from the caret package with the svmRadial method
+model_svm <- train(y ~ .,
+             data = train,
+             method = "svmRadial",
+             preProc = c("center","scale"),  
+             metric = "ROC",
+             trControl = ctrl,
+             tuneGrid = svm_grid)
+model_svm
+
+# Testing the model on the test subset
+svm_pred <- predict(model_svm, test)
+
+# Displaying the accuracy of the model
+confusionMatrix(svm_pred, test$y)
+```
+
+## Question 4
+Building a classification model using a neural network function - nnet.
+
+The confusion matrix shows approximately 90% accuracy in the model.
+```{r Question1.4}
+# Function to normalize data using min-max normalization
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+
+# Normalizing the non-categorical featues
+bank$age = normalize(bank$age)
+bank$balance = normalize(bank$balance)
+bank$day = normalize(bank$day)
+bank$duration = normalize(bank$duration)
+bank$campaign = normalize(bank$campaign)
+bank$pdays = normalize(bank$pdays)
+bank$previous = normalize(bank$previous)
+
+set.seed(142)
+# Using the trainControl function to control the computational nuances of the 
+# train function
+ctrl <- trainControl(method = "cv", 
+                     n = 5,	
+                     summaryFunction = twoClassSummary,
+                     classProbs = TRUE)
+
+nnet_grid <- expand.grid(decay = c(0.5, 0.1), 
+                         size = c(5, 6, 7))
+
+# Using the train function from the caret package with the nnet method
+model_nnet <- train(y ~ .,
+              train,
+              method = "nnet", 
+              maxit = 1000, 
+              tuneGrid = nnet_grid,
+              trControl = ctrl,
+              preProc = c("center","scale"),  
+              metric = "ROC")  
+model_nnet
+
+# Testing the model on the test subset
+nnet_pred <- predict(model_nnet, test)
+
+# Displaying the accuracy of the model
+confusionMatrix(nnet_pred, test$y)
+```
+
+## Question 5
+Comparing the accuracy of the two models based on the absolute accuracy and AUC.
+```{r Question1.5}
+library(ROCR)
+# Accuracy of the SVM model
+paste("Accuracy of SVM Model = ", mean(svm_pred == test$y))
+
+# Accuracy of the ANN model
+paste("Accuracy of ANN Model = ", mean(nnet_pred == test$y))
+
+# Generating probabilities
+svm_prob <- predict(model_svm, test, type = "prob")
+nnet_prob <- predict(model_nnet, test, type = "prob")
+
+# Prediction function used to transform the probability list into a standardized format
+svm_input <- prediction(svm_prob[,2], test$y)
+nnet_input <- prediction(nnet_prob[,2], test$y)
+
+# Performance function used to evaluate the AUC
+svm_auc <- performance(svm_input, "auc")
+nnet_auc <- performance(nnet_input, "auc")
+
+# Displaying the AUC values
+paste("AUC of SVM Model = ", svm_auc@y.values)
+paste("AUC of ANN Model = ", nnet_auc@y.values)
+```
+
+
+
+# Problem 2
+Using the wine dataset and applying kmeans clustering algorithm and visualizing the results.
+
+## Step 1
+Loading the dataset and setting the column headers.
+```{r Step1}
+Q2_data <- read.csv("wine-data.csv")
+colnames(Q2_data) <- c("class", "Alcohol", "Malic acid", "Ash", 
+                       "Alcalinity_of_ash", "Magnesium", "Total_phenols", 
+                       "Flavanoids", "Nonflavanoid_phenols", "Proanthocyanins", 
+                       "Color_intensity", "Hue", "OD280/OD315", "Proline")
+
+# Initializing lists to summarize the accuracies
+acc_train <- rep(0,6)
+acc_test <- rep(0,6)
+```
+
+## Step 2
+Splitting the dataset into training and testing datasets and verifying the proportion of the three classes in the two subsets
+```{r Step2}
+library(caTools)
+
+# Splitting the data into training and testing datasets
+samp_splt <- sample.split(Q2_data$class, SplitRatio = 2/3, group = Q2_data$class)
+train_data <- subset(Q2_data, samp_splt == TRUE)
+test_data <- subset(Q2_data, samp_splt == FALSE)
+
+# Visual representation of equal distribution of cultivars in training/test set
+mat = matrix(0,2,3)
+l = list()
+
+for (i in 1:3){
+  l[[i]] = c(sum(train_data$class == i)/nrow(train_data), 
+             sum(test_data$class == i)/nrow(test_data))
+  mat[,i] = l[[i]]
+}
+
+rownames(mat) = c("Training Set","Test Set")
+colnames(mat) = c("class 1","class 2","class 3")
+
+barplot(mat, beside = FALSE, col = c("darkblue","red"), 
+        ylim = c(0,1), ylab = "Proportion", xlab = "class", 
+        main = "Distribution of classes")
+
+legend("topright", legend = c("Training Set","Test Set"), 
+       cex = 0.8, fill=c("darkblue","red"))
+```
+
+## Step 3
+Summarizing the data and determining the number of clusters to be used.
+```{r Step3}
+summary(Q2_data)
+
+# Calculating Within Cluster Sum of Squares
+wcss <- (nrow(Q2_data)-1)*sum(apply(Q2_data,2,var))
+for (i in 2:14) wcss[i] <- sum(kmeans(Q2_data[,1:14],
+                                       centers=i)$withinss)
+
+plot(1:14, wcss, type="b", xlab="Number of Clusters",
+     ylab="Within Cluster Sum of Squares")
+```
+
+## Step 4
+Raw Data and Euclidean Distance
+
+Creating a list of 100 possible ways of clustering, using different seeds and euclidean distance.
+
+Choosing the one/s with minimal total WCSS.
+```{r Step4}
+library(cclust)
+L1 = list()
+totw1 = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  # Using the cclust function to cluster the data
+  L1[[i]] = cclust(as.matrix(train_data[,2:14]), 3, 
+                   method = "kmeans", dist = "euclidean")
+  totw1[[i]] = sum(L1[[i]]$withinss)
+}
+
+# Finding the minimal total WCSS
+min_ss = min(unlist(totw1))
+
+for (i in 1:100){
+  if (totw1[[i]] == min_ss){
+    pred_train1 = predict(L1[[i]], newdata = as.matrix(train_data[,2:14]))
+    pred_test1 = predict(L1[[i]], newdata = as.matrix(test_data[,2:14]))
+    # print(i)
+    # print(table(train_data[,1],pred_train1$cluster))
+    # print(table(test_data[,1],pred_test1$cluster))
+  }
+}
+
+# Choosing L1[[3]]
+chosen_pred1train = predict(L1[[3]], newdata = as.matrix(train_data[,2:14]))
+chosen_pred1test = predict(L1[[3]], newdata = as.matrix(test_data[,2:14]))
+
+table(train_data[,1],chosen_pred1train$cluster)
+table(test_data[,1], chosen_pred1test$cluster)
+
+# Assigning accuracies
+acc_train[1] <- mean(train_data[,1] == chosen_pred1train$cluster)
+acc_test[1] <- mean(test_data[,1] == chosen_pred1test$cluster)
+L1[[3]]$centers
+```
+
+## Step 5
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step5}
+library(ggplot2)
+
+class1train_raw = subset(train_data, train_data[,1] == 1)
+class2train_raw = subset(train_data, train_data[,1] == 2)
+class3train_raw = subset(train_data, train_data[,1] == 3)
+
+# Calculating the distance from the centroids
+class1train_raw$sse = apply(class1train_raw[,2:14], 1, 
+                            function(x) sum( (x-L1[[3]]$centers[1,])^2 ))
+class2train_raw$sse = apply(class2train_raw[,2:14], 1, 
+                            function(x) sum( (x-L1[[3]]$centers[2,])^2 ))
+class3train_raw$sse = apply(class3train_raw[,2:14], 1, 
+                            function(x) sum( (x-L1[[3]]$centers[3,])^2 ))
+
+sse_train_raw = rbind(class1train_raw, class2train_raw, class3train_raw)
+
+sse_train_raw$cluster = jitter(chosen_pred1train$cluster)
+sse_train_raw$class = cut(sse_train_raw$class, c(.5,1.5,2.5,3.5), 
+                          right=FALSE, labels=c(1:3))
+
+# Jitter plot to visualize distance from closest cluster centroid 
+# for training set
+jitplot_train_raw = qplot(cluster, sse, data = sse_train_raw, 
+                          color = class, alpha = I(2/3), size = I(10))
+jitplot_train_raw + coord_cartesian(ylim=c(0, 300000)) + 
+  scale_y_continuous(breaks=seq(0, 300000, 10000)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# For testing set
+class1test_raw = subset(test_data, test_data[,1] == 1)
+class2test_raw = subset(test_data, test_data[,1] == 2)
+class3test_raw = subset(test_data, test_data[,1] == 3)
+
+class1test_raw$sse = apply(class1test_raw[,2:14], 1, 
+                           function(x) sum( (x-L1[[3]]$centers[1,])^2 ))
+class2test_raw$sse = apply(class2test_raw[,2:14], 1, 
+                           function(x) sum( (x-L1[[3]]$centers[2,])^2 ))
+class3test_raw$sse = apply(class3test_raw[,2:14], 1, 
+                           function(x) sum( (x-L1[[3]]$centers[3,])^2 ))
+
+sse_test_raw = rbind(class1test_raw, class2test_raw, class3test_raw)
+
+sse_test_raw$cluster = jitter(chosen_pred1test$cluster)
+sse_test_raw$class = cut(sse_test_raw$class, c(.5,1.5,2.5,3.5), 
+                         right=FALSE, labels=c(1:3))
+
+# Jitter plot to visualize distance from closest cluster centroid for testing set
+jitplot_test_raw = qplot(cluster, sse, data = sse_test_raw, 
+                         color=class, alpha = I(2/3), size = I(10))
+jitplot_test_raw + coord_cartesian(ylim=c(0, 300000)) + 
+  scale_y_continuous(breaks=seq(0, 300000, 10000)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+```
+
+## Step 6
+Raw Data & Manhattan Distance
+
+Using manhattan distance for the clustering.
+```{r Step6}
+L1_manh = list()
+totw1_manh = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  L1_manh[[i]] = cclust(as.matrix(train_data[,2:14]), 3, 
+                        method = "kmeans", dist = "manhattan")
+  totw1_manh[[i]] = sum(L1_manh[[i]]$withinss)
+}
+
+min_ss_manh = min(unlist(totw1_manh))
+
+for (i in 1:100){
+  if (totw1_manh[[i]] == min_ss_manh){
+    pred_train1_manh = predict(L1_manh[[i]], 
+                               newdata = as.matrix(train_data[,2:14]))
+    pred_test1_manh = predict(L1_manh[[i]], 
+                              newdata = as.matrix(test_data[,2:14]))
+    # print(i)
+    # print(table(train_data[,1],pred_train1_manh$cluster))
+    # print(table(test_data[,1],pred_test1_manh$cluster))
+  }
+}
+
+# Choose L1_manh[[30]] as the best clustering among the obtained clusterings
+chosen_pred1train_manh = predict(L1_manh[[30]], 
+                                 newdata = as.matrix(train_data[,2:14]))
+chosen_pred1test_manh = predict(L1_manh[[30]], 
+                                newdata = as.matrix(test_data[,2:14]))
+
+table(train_data[,1],chosen_pred1train_manh$cluster)
+table(test_data[,1], chosen_pred1test_manh$cluster)
+
+# Assigning accuracies
+acc_train[3] <- mean(train_data[,1] == chosen_pred1train_manh$cluster)
+acc_test[3] <- mean(test_data[,1] == chosen_pred1test_manh$cluster)
+L1_manh[[30]]$centers
+```
+
+## Step 7
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step 7}
+# Jitter plot for the training set
+class1train_raw_manh = subset(train_data, train_data[,1] == 1)
+class2train_raw_manh = subset(train_data, train_data[,1] == 2)
+class3train_raw_manh = subset(train_data, train_data[,1] == 3)
+
+class1train_raw_manh$sse = apply(class1train_raw_manh[,2:14], 
+                                 1, function(x) 
+                                   sum( abs(x - L1_manh[[30]]$centers[1,]) ))
+class2train_raw_manh$sse = apply(class2train_raw_manh[,2:14], 
+                                 1, function(x) 
+                                   sum( abs(x - L1_manh[[30]]$centers[2,]) ))
+class3train_raw_manh$sse = apply(class3train_raw_manh[,2:14], 
+                                 1, function(x) 
+                                   sum( abs(x - L1_manh[[30]]$centers[3,]) ))
+
+sse_train_raw_manh = rbind(class1train_raw_manh, 
+                           class2train_raw_manh, class3train_raw_manh)
+
+sse_train_raw_manh$cluster = jitter(chosen_pred1train_manh$cluster)
+sse_train_raw_manh$class = cut(sse_train_raw_manh$class, 
+                               c(.5,1.5,2.5,3.5), right=FALSE, labels=c(1:3))
+
+jitplot_train_raw_manh = qplot(cluster, sse, data = sse_train_raw_manh, 
+                               color=class, alpha = I(2/3), size = I(10))
+jitplot_train_raw_manh + coord_cartesian(ylim=c(0, 800)) + 
+  scale_y_continuous(breaks=seq(0, 800, 40)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# Jitter plot for the test set
+class1test_raw_manh = subset(test_data, test_data[,1] == 1)
+class2test_raw_manh = subset(test_data, test_data[,1] == 2)
+class3test_raw_manh = subset(test_data, test_data[,1] == 3)
+
+class1test_raw_manh$sse = apply(class1test_raw_manh[,2:14], 
+                                1, function(x) 
+                                  sum( abs(x - L1_manh[[30]]$centers[1,]) ))
+class2test_raw_manh$sse = apply(class2test_raw_manh[,2:14], 
+                                1, function(x) 
+                                  sum( abs(x - L1_manh[[30]]$centers[2,]) ))
+class3test_raw_manh$sse = apply(class3test_raw_manh[,2:14], 
+                                1, function(x) 
+                                  sum( abs(x - L1_manh[[30]]$centers[3,]) ))
+
+sse_test_raw_manh = rbind(class1test_raw_manh, 
+                          class2test_raw_manh, class3test_raw_manh)
+
+sse_test_raw_manh$cluster = jitter(chosen_pred1test_manh$cluster)
+sse_test_raw_manh$class = cut(sse_test_raw_manh$class, 
+                              c(.5,1.5,2.5,3.5), right=FALSE, labels=c(1:3))
+
+jitplot_test_raw_manh = qplot(cluster, sse, data = sse_test_raw_manh, 
+                              color=class, alpha = I(2/3), size = I(10))
+jitplot_test_raw_manh + coord_cartesian(ylim=c(0, 800)) + 
+  scale_y_continuous(breaks=seq(0, 800, 40)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+```
+
+## Step 8
+Scaled Data & Euclidean Distance
+```{r Step8}
+# Scaling the data
+mins = sapply(train_data, min)
+ranges = sapply(train_data,function(x)diff(range(x)))
+train_set_scaled = as.data.frame(scale(train_data, center = mins, scale = ranges))
+test_data_scaled = as.data.frame(scale(test_data, center = mins, scale = ranges))
+
+train_set_scaled[,1] = train_data[,1]
+test_data_scaled[,1] = test_data[,1]
+
+L2 = list()
+totw2 = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  L2[[i]] = cclust(as.matrix(train_set_scaled[,2:14]), 3, 
+                   method = "kmeans", dist = "euclidean")
+  totw2[[i]] = sum(L2[[i]]$withinss)
+}
+
+min_ss2 = min(unlist(totw2))
+
+for (i in 1:100){
+  if (totw2[[i]] == min_ss2){
+    pred_train2 = predict(L2[[i]], newdata = as.matrix(train_set_scaled[,2:14]))
+    pred_test2 = predict(L2[[i]], newdata = as.matrix(test_data_scaled[,2:14]))
+    # print(i)
+    # print(table(train_data[,1],pred_train2$cluster))
+    # print(table(test_data[,1],pred_test2$cluster))
+  }
+}
+
+# Choosing L2[[13]] as the most suitable result
+chosen_pred2train = predict(L2[[13]], newdata = as.matrix(train_set_scaled[,2:14]))
+chosen_pred2test = predict(L2[[13]], newdata = as.matrix(test_data_scaled[,2:14]))
+
+table(train_set_scaled[,1],chosen_pred2train$cluster)
+table(test_data_scaled[,1], chosen_pred2test$cluster)
+
+# Assigning accuracies
+acc_train[2] <- mean(train_set_scaled[,1] == chosen_pred2train$cluster)
+acc_test[2] <- mean(test_data_scaled[,1] == chosen_pred2test$cluster)
+
+L2[[13]]$centers
+```
+
+## Step 9
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step9}
+# Jitter plot for the training set
+class1train = subset(train_set_scaled, train_set_scaled[,1] == 1)
+class2train = subset(train_set_scaled, train_set_scaled[,1] == 2)
+class3train = subset(train_set_scaled, train_set_scaled[,1] == 3)
+
+class1train$sse = apply(class1train[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[1,])^2 ))
+class2train$sse = apply(class2train[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[2,])^2 ))
+class3train$sse = apply(class3train[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[3,])^2 ))
+
+sse_train = rbind(class1train, class2train, class3train)
+
+sse_train$cluster = jitter(chosen_pred2train$cluster)
+sse_train$class = cut(sse_train$class, c(.5,1.5,2.5,3.5), 
+                      right=FALSE, labels=c(1:3)) 
+
+jitplot_train = qplot(cluster, sse, data = sse_train, color=class, 
+                      alpha = I(2/3), size = I(10))
+jitplot_train + coord_cartesian(ylim=c(0, 2)) + 
+  scale_y_continuous(breaks=seq(0, 2, .5)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# Jitter plot for the testing set
+class1test = subset(test_data_scaled, test_data_scaled[,1] == 1)
+class2test = subset(test_data_scaled, test_data_scaled[,1] == 2)
+class3test = subset(test_data_scaled, test_data_scaled[,1] == 3)
+
+class1test$sse = apply(class1test[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[1,])^2 ))
+class2test$sse = apply(class2test[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[2,])^2 ))
+class3test$sse = apply(class3test[,2:14], 1, function(x) 
+  sum( (x-L2[[13]]$centers[3,])^2 ))
+
+sse_test = rbind(class1test, class2test, class3test)
+
+sse_test$cluster = jitter(chosen_pred2test$cluster)
+sse_test$class = cut(sse_test$class, c(.5,1.5,2.5,3.5), 
+                     right=FALSE, labels=c(1:3))
+
+jitplot_test = qplot(cluster, sse, data = sse_test, 
+                     color=class, alpha = I(2/3), size = I(10))
+jitplot_test + coord_cartesian(ylim=c(0, 2.5)) + 
+  scale_y_continuous(breaks=seq(0, 5, .7)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+```
+
+## Step 10
+Scaled Data & Manhattan Distance
+```{r Step10}
+L2_manh = list()
+totw2_manh = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  L2_manh[[i]] = cclust(as.matrix(train_set_scaled[,2:14]), 3, 
+                        method = "kmeans", dist = "manhattan")
+  totw2_manh[[i]] = sum(L2_manh[[i]]$withinss)
+}
+
+min_ss2_manh = min(unlist(totw2_manh))
+
+for (i in 1:100){
+  if (totw2_manh[[i]] == min_ss2_manh){
+    pred_train2_manh = predict(L2_manh[[i]], 
+                               newdata = as.matrix(train_set_scaled[,2:14]))
+    pred_test2_manh = predict(L2_manh[[i]], 
+                              newdata = as.matrix(test_data_scaled[,2:14]))
+    # print(i)
+    # print(table(train_data[,1],pred_train2_manh$cluster))
+    # print(table(test_data[,1],pred_test2_manh$cluster))
+  }
+}
+
+chosen_pred2train_manh = predict(L2_manh[[4]], 
+                                 newdata = as.matrix(train_set_scaled[,2:14]))
+chosen_pred2test_manh = predict(L2_manh[[4]], 
+                                newdata = as.matrix(test_data_scaled[,2:14]))
+
+table(train_set_scaled[,1], chosen_pred2train_manh$cluster)
+table(test_data_scaled[,1], chosen_pred2test_manh$cluster)
+
+# Assigning accuracies
+acc_train[4] <- mean(train_set_scaled[,1] == chosen_pred2train_manh$cluster)
+acc_test[4] <- mean(test_data_scaled[,1] == chosen_pred2test_manh$cluster)
+
+L2_manh[[4]]$centers
+```
+
+## Step 11
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step11}
+# Jitter plot for the training set
+class1train_scaled_manh = subset(train_set_scaled, train_set_scaled[,1] == 1)
+class2train_scaled_manh = subset(train_set_scaled, train_set_scaled[,1] == 2)
+class3train_scaled_manh = subset(train_set_scaled, train_set_scaled[,1] == 3)
+
+class1train_scaled_manh$sse = apply(class1train[,2:14], 
+                                    1, function(x) 
+                                      sum( abs(x - L2_manh[[4]]$centers[1,]) ))
+class2train_scaled_manh$sse = apply(class2train[,2:14], 
+                                    1, function(x) 
+                                      sum( abs(x - L2_manh[[4]]$centers[2,]) ))
+class3train_scaled_manh$sse = apply(class3train[,2:14], 
+                                    1, function(x) 
+                                      sum( abs(x - L2_manh[[4]]$centers[3,]) ))
+
+sse_train_scaled_manh = rbind(class1train_scaled_manh, class2train_scaled_manh, 
+                              class3train_scaled_manh)
+
+sse_train_scaled_manh$cluster = jitter(chosen_pred2train_manh$cluster)
+sse_train_scaled_manh$class = cut(sse_train_scaled_manh$class, 
+                                  c(.5,1.5,2.5,3.5), right=FALSE, labels=c(1:3))
+
+jitplot_train_scaled_manh = qplot(cluster, sse, data = sse_train_scaled_manh, 
+                                  color=class, alpha = I(2/3), size = I(10))
+jitplot_train_scaled_manh + coord_cartesian(ylim=c(0, 5)) + 
+  scale_y_continuous(breaks=seq(0, 5, .5)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# Jitter plot for the testing set
+class1test_scaled_manh = subset(test_data_scaled, test_data_scaled[,1] == 1)
+class2test_scaled_manh = subset(test_data_scaled, test_data_scaled[,1] == 2)
+class3test_scaled_manh = subset(test_data_scaled, test_data_scaled[,1] == 3)
+
+class1test_scaled_manh$sse = apply(class1test_scaled_manh[,2:14], 
+                                   1, function(x) 
+                                     sum( abs(x-L2_manh[[4]]$centers[1,]) ))
+class2test_scaled_manh$sse = apply(class2test_scaled_manh[,2:14], 
+                                   1, function(x) 
+                                     sum( abs(x-L2_manh[[4]]$centers[2,]) ))
+class3test_scaled_manh$sse = apply(class3test_scaled_manh[,2:14], 
+                                   1, function(x) 
+                                     sum( abs(x-L2_manh[[4]]$centers[3,]) ))
+
+sse_test_scaled_manh = rbind(class1test_scaled_manh, 
+                             class2test_scaled_manh, class3test_scaled_manh)
+
+sse_test_scaled_manh$cluster = jitter(chosen_pred2test_manh$cluster)
+sse_test_scaled_manh$class = cut(sse_test_scaled_manh$class, 
+                                 c(.5,1.5,2.5,3.5), right=FALSE, labels=c(1:3))
+
+jitplot_test_scaled_manh = qplot(cluster, sse, data = sse_test_scaled_manh, 
+                                 color=class, alpha = I(2/3), size = I(10))
+jitplot_test_scaled_manh + coord_cartesian(ylim=c(0, 5)) + 
+  scale_y_continuous(breaks=seq(0, 5, .5)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+
+```
+
+## Step 12
+Principal Component Analysis
+
+Summarizing the data and plotting the PCA
+```{r Step12}
+# PCA on the trained, scaled dataset
+A1 = prcomp(train_set_scaled[,2:14])
+
+# Summary of the results
+summary(A1)
+plot(A1, type="l", main = "Principal Component Analysis")
+```
+
+## Step 13
+Running the kmeans algorithm and displaying the best clustering
+```{r Step13}
+# The training data is going to be the first two PCs
+train.data = data.frame(A1$x)
+train.data = train.data[,1:2]
+train.data$class = train_data$class
+
+# Testing the data
+test.data = predict(A1, newdata = test_data_scaled[,2:14])
+test.data = as.data.frame(test.data)
+test.data = test.data[,1:2]
+test.data$class = test_data$class
+
+L4 = list()
+totw4 = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  L4[[i]] = cclust(as.matrix(train.data)[,1:2], 3, 
+                   method = "kmeans", dist = "euclidean")
+  totw4[[i]] = sum(L4[[i]]$withinss)
+}
+
+min_ss4 = min(unlist(totw4))
+
+for (i in 1:100){
+  if (totw4[[i]] == min_ss4){
+    pred_train4 = predict(L4[[i]], newdata = as.matrix(train.data)[,1:2])
+    pred_test4 = predict(L4[[i]], newdata = as.matrix(test.data)[,1:2])
+    # print(i)
+    # print(table(train_data[,1],pred_train4$cluster))
+    # print(table(test_data[,1],pred_test4$cluster))
+  }
+}
+
+# Choosing L4[[3]]
+chosen_pred4train = predict(L4[[3]], newdata = as.matrix(train.data)[,1:2])
+chosen_pred4test = predict(L4[[3]], newdata = as.matrix(test.data)[,1:2])
+
+table(train_data[,1],chosen_pred4train$cluster)
+table(test_data[,1], chosen_pred4test$cluster)
+
+# Assigning accuracies
+acc_train[5] <- mean(train_data[,1] == chosen_pred4train$cluster)
+acc_test[5] <- mean(test_data[,1] == chosen_pred4test$cluster)
+
+L4[[3]]$centers
+```
+
+## Step 14
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step 14}
+# Jitter plot for the training set
+class1train_pca = subset(train.data, train.data[,3] == 1)
+class2train_pca = subset(train.data, train.data[,3] == 2)
+class3train_pca = subset(train.data, train.data[,3] == 3)
+
+class1train_pca$sse = apply(class1train_pca[,c(1,2)], 1, 
+                            function(x) sum( (x-L4[[3]]$centers[1,])^2 ))
+class2train_pca$sse = apply(class2train_pca[,c(1,2)], 1, 
+                            function(x) sum( (x-L4[[3]]$centers[2,])^2 ))
+class3train_pca$sse = apply(class3train_pca[,c(1,2)], 1, 
+                            function(x) sum( (x-L4[[3]]$centers[3,])^2 ))
+
+sse_train_pca = rbind(class1train_pca, class2train_pca, class3train_pca)
+
+sse_train_pca$cluster = jitter(chosen_pred4train$cluster)
+sse_train_pca$class = cut(sse_train_pca$class, c(.5,1.5,2.5,3.5), 
+                          right=FALSE, labels=c(1:3))
+
+jitplot_train_pca = qplot(cluster, sse, data = sse_train_pca, 
+                          color=class, alpha = I(2/3), size = I(10))
+jitplot_train_pca + coord_cartesian(ylim=c(0, .8)) + 
+  scale_y_continuous(breaks=seq(0, .8, .1)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# Jitter plot for the testing set
+class1test_pca = subset(test.data, test.data[,3] == 1)
+class2test_pca = subset(test.data, test.data[,3] == 2)
+class3test_pca = subset(test.data, test.data[,3] == 3)
+
+class1test_pca$sse = apply(class1test_pca[,c(1,2)], 1, 
+                           function(x) sum( (x-L4[[3]]$centers[1,])^2 ))
+class2test_pca$sse = apply(class2test_pca[,c(1,2)], 1, 
+                           function(x) sum( (x-L4[[3]]$centers[2,])^2 ))
+class3test_pca$sse = apply(class3test_pca[,c(1,2)], 1, 
+                           function(x) sum( (x-L4[[3]]$centers[3,])^2 ))
+
+sse_test_pca = rbind(class1test_pca, class2test_pca, class3test_pca)
+
+sse_test_pca$cluster = jitter(chosen_pred4test$cluster)
+sse_test_pca$class = cut(sse_test_pca$class, c(.5,1.5,2.5,3.5), 
+                         right=FALSE, labels=c(1:3))
+
+jitplot_test_pca = qplot(cluster, sse, data = sse_test_pca, 
+                         color=class, alpha = I(2/3), size = I(10))
+jitplot_test_pca + coord_cartesian(ylim=c(0, .8)) + 
+  scale_y_continuous(breaks=seq(0, .8, .1)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+```
+
+## Step 15
+Cluster Analysis
+```{r Step15}
+library(clusterSim)
+library(scatterplot3d)
+
+# Cluster analysis
+l = pred_train4$cluster
+m = pred_test4$cluster
+
+clusplot(train_set_scaled[,2:14], l, color=T, shade=T, labels = 2, 
+         lines = 0, main = "Cluster Analysis - Training Set")
+clusplot(test_data_scaled[,2:14], m, color=T, shade=T, labels = 2, 
+         lines = 0, main = "Cluster Analysis - Test Set")
+
+# Pairwise plot
+pairs(A1$x[,1:7], col = rainbow(3)[train_set_scaled[,1]], asp = 1)
+
+# 3-D scatterplot
+scatterplot3d(A1$x[,c(1,2,3)], color=rainbow(3)[train_set_scaled[,1]])
+```
+
+## Step 16
+Independent Component Analysis
+```{r Step16}
+library(fastICA)
+set.seed(25)
+
+# Preprocessing the training data
+preprocessParams = preProcess(train_data[,2:14], 
+                              method=c("center", "scale", "ica"), n.comp=13)
+print(preprocessParams)
+
+transf = predict(preprocessParams, train_data[,2:14])
+summary(transf)
+
+pairs(transf, col = rainbow(3)[train_set_scaled[,1]])
+
+test.data2 = predict(preprocessParams, newdata = test_data[,2:14])
+pairs(test.data2, col = rainbow(3)[test_data[,1]])
+
+# Plotting the IC6 against itself
+plot(transf[,6], transf[,6], col=rainbow(3)[train_set_scaled[,1]], 
+     xlab="IC1", ylab="IC1")
+```
+
+## Step 17
+Results of the clustering
+```{r Step17}
+# Adding a new column "class"
+transf$class = train_data$class
+test.data2$class = test_data$class
+
+M = transf[,c(6,8,14)]
+N = test.data2[,c(6,8,14)]
+
+L4_ica = list()
+totw4_ica = list()
+
+for (i in 1:100) {
+  set.seed(i)
+  L4_ica[[i]] = cclust(as.matrix(M)[,c(1,2)], 3, 
+                       method = "kmeans", dist = "euclidean")
+  totw4_ica[[i]] = sum(L4_ica[[i]]$withinss)
+}
+
+min_ss4_ica = min(unlist(totw4_ica))
+
+for (i in 1:100){
+  if (totw4_ica[[i]] == min_ss4_ica){
+    pred_train4_ica = predict(L4_ica[[i]], newdata = as.matrix(M)[,c(1,2)])
+    pred_test4_ica = predict(L4_ica[[i]], newdata = as.matrix(N)[,c(1,2)])
+    # print(i)
+    # print(table(train_data[,1],pred_train4_ica$cluster))
+    # print(table(test_data[,1],pred_test4_ica$cluster))
+  }
+}
+
+chosen_pred4train_ica = predict(L4_ica[[54]], newdata = as.matrix(M)[,c(1,2)])
+chosen_pred4test_ica = predict(L4_ica[[54]], newdata = as.matrix(N)[,c(1,2)])
+
+table(train_data[,1],chosen_pred4train_ica$cluster)
+table(test_data[,1], chosen_pred4test_ica$cluster)
+
+# Assigning accuracies
+acc_train[6] <- mean(train_data[,1] == chosen_pred4train_ica$cluster)
+acc_test[6] <- mean(test_data[,1] == chosen_pred4test_ica$cluster)
+
+L4_ica[[54]]$centers
+```
+
+## Step 18
+Visualizing the results using a jitter plot for the training and testing datasets
+```{r Step18}
+# Jitter plot for training dataset
+class1train_ica = subset(M, M[,3] == 1)
+class2train_ica = subset(M, M[,3] == 2)
+class3train_ica = subset(M, M[,3] == 3)
+
+class1train_ica$sse = apply(class1train_ica[,c(1,2)], 1, function(x) 
+  sum( (x-L4_ica[[54]]$centers[1,])^2 ))
+class2train_ica$sse = apply(class2train_ica[,c(1,2)], 1, function(x) 
+  sum( (x-L4_ica[[54]]$centers[2,])^2 ))
+class3train_ica$sse = apply(class3train_ica[,c(1,2)], 1, function(x) 
+  sum( (x-L4_ica[[54]]$centers[3,])^2 ))
+
+sse_train_ica = rbind(class1train_ica, class2train_ica, class3train_ica)
+
+sse_train_ica$cluster = jitter(chosen_pred4train_ica$cluster)
+sse_train_ica$class = cut(sse_train_ica$class, c(.5,1.5,2.5,3.5), 
+                          right=FALSE, labels=c(1:3)) 
+
+jitplot_train_ica = qplot(cluster, sse, data = sse_train_ica, 
+                          color=class, alpha = I(2/3), size = I(10))
+jitplot_train_ica + coord_cartesian(ylim=c(0, 10)) + 
+  scale_y_continuous(breaks=seq(0, 10, 1)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Training Set")
+
+# Jitter plot for testing data
+class1test_ica = subset(N, N[,3] == 1)
+class2test_ica = subset(N, N[,3] == 2)
+class3test_ica = subset(N, N[,3] == 3)
+
+class1test_ica$sse = apply(class1test_ica[,c(1,2)], 1, 
+                           function(x) sum( (x-L4_ica[[54]]$centers[1,])^2 ))
+class2test_ica$sse = apply(class2test_ica[,c(1,2)], 1, 
+                           function(x) sum( (x-L4_ica[[54]]$centers[2,])^2 ))
+class3test_ica$sse = apply(class3test_ica[,c(1,2)], 1, 
+                           function(x) sum( (x-L4_ica[[54]]$centers[3,])^2 ))
+
+sse_test_ica = rbind(class1test_ica, class2test_ica, class3test_ica)
+
+sse_test_ica$cluster = jitter(chosen_pred4test_ica$cluster)
+sse_test_ica$class = cut(sse_test_ica$class, c(.5,1.5,2.5,3.5), 
+                         right=FALSE, labels=c(1:3))
+
+jitplot_test_ica = qplot(cluster, sse, data = sse_test_ica, 
+                         color=class, alpha = I(2/3), size = I(10))
+jitplot_test_ica + coord_cartesian(ylim=c(0, 10)) + 
+  scale_y_continuous(breaks=seq(0, 10, 2)) +
+  scale_x_continuous(breaks=seq(1,3,1)) + xlab("Cluster") + 
+  ylab("Distance from Centroid") +
+  ggtitle("Distance from Closest Cluster Centroid - Test Set")
+```
+
+## Summary of results
+```{r Summary}
+sets <- c("Raw data and Euclidean Distance",
+          "Scaled data and Euclidean Distance",
+          "Raw data and Manhattan Distance",
+          "Scaled data and Manhattan Distance",
+          "PCA", "ICA")
+
+# Summarizing the results
+df <- data.frame(Results = sets, 'Training Set' = acc_train, 
+                 'Testing Set' = acc_test)
+df
+
+```
+

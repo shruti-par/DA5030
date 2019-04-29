@@ -1,0 +1,134 @@
+---
+title: "DA5030.A1.Parpattedar"
+author: "Shruti Parpattedar"
+date: "January 21, 2019"
+output: pdf_document
+---
+
+# Question 1
+Loaded RStudio and RMarkdowns
+
+# Question 2
+Loading given dataset and assigning columns names
+
+```{r Question2}
+library(readr)
+data <- read_csv("customertxndata.csv", col_names = FALSE)
+names(data) <- c("Visits", "Tranx", "OS", "Gender", "Revenue")
+
+```
+
+# Question 3
+Calculating summative statistics: total transaction amount (revenue), mean number of
+visits, median revenue, standard deviation of revenue, most common gender.
+
+```{r Question3}
+total_revenue <- sum(data$Revenue, na.rm = TRUE)
+mean_visits <- mean(data$Visits, na.rm = TRUE)
+median_revenue <- median(data$Revenue, na.rm = TRUE)
+sd_revenue <- sd(data$Revenue, na.rm = TRUE)
+getMode <- function(x) {
+  nas <- is.na(x)
+  y <- x[-nas]
+  uniq <- unique(y)
+  uniq[which.max(tabulate(match(y, uniq)))]
+}
+gender_mode <- getMode(data$Gender)
+
+output <- data.frame(total_revenue, mean_visits, median_revenue, sd_revenue, gender_mode)
+output
+```
+
+# Question 4
+Plotting a column graph for gender v/s revenue.
+
+```{r Question4}
+library(magrittr)
+library(ggplot2)
+library(tidyverse)
+data %>%
+  select(Gender, Revenue) %>%
+  filter(!is.na(Gender)) %>%
+  ggplot(aes(Gender, Revenue)) + geom_col(na.rm = TRUE)
+
+```
+
+# Question 5
+Correlation between number of visits and revenue -
+The correlation obtained is ~0.739 which is high. So this means that there exists a positive correlation between the number of visits and the revenue earned. So, that means that there is a tendency for the revenue earned to increase with an increase in the number of visits.
+
+```{r Question5}
+cor(data$Visits, data$Revenue)
+```
+
+# Question 6
+
+In order to find columns that contain missing values(NAs), I applied the unique function to each of the columns and observed the results for NA. By doing this, I found that the columns for Transactions and Gender contain NAs.
+
+In the transaction column, there are 1800 NAs. This is approximately 7.9% of the total data. This is not an exceptionally high percentage so we could handle the missing data by imputing the average transactions in their place. Since, the percentage of imputed values is not very high the standard deviation would not vary too much.
+
+In the Gender column, there are 5400 NAs. This is approximately 23.9% of the total data. This is a considerably high value so deletion would affect the statistics of the data. So, we could handle the missing data either by imputing the mode of the gender values or by creating a decision tree which woud predict the gender of the missing values.
+
+```{r Question6}
+unique(data$Visits)
+unique(data$Tranx)
+unique(data$OS)
+unique(data$Gender)
+unique(data$Revenue)
+
+data %>%
+  select(Tranx) %>%
+  filter(is.na(Tranx)) %>%
+  summarise(Tranx_NAs = n())
+
+data %>%
+  select(Gender) %>%
+  filter(is.na(Gender)) %>%
+  summarise(Gender_NAs = n())
+```
+
+# Question 7
+Imputing the missing values in the transaction column by the average rounded to the nearest whole number and those in the gender column by the mode (Male). I have used the function defined in Q3 for this purpose.
+
+```{r Question7}
+Tranx_NA <- is.na(data$Tranx)
+Gender_NA <- is.na(data$Gender)
+data$Tranx[Tranx_NA] <- round(mean(data$Tranx, na.rm = TRUE))
+data$Gender[Gender_NA] <- getMode(data$Gender)
+```
+
+# Question 8
+Dividing the dataset into training and Validation datasets. 
+Training - odd row numbers
+Validation - even row numbers
+
+```{r Question8}
+training <- data[seq(1, dim(data)[1], 2),]
+validation <- data[seq(2, dim(data)[1], 2),]
+```
+
+# Question 9
+Comparing the mean revenue in the training and validation datasets.
+The difference between the means tells us that taking every alternate row for the datasets was not the ideal way to divide the dataset ie. the data is not evenly distributed in the two datasets.
+
+```{r Question9}
+train_mean <- mean(training$Revenue)
+validation_mean <- mean(validation$Revenue)
+train_mean
+validation_mean
+```
+
+# Question 10
+Generating sample sizes to creating subsets for training, testing and validation.
+
+```{r Question10}
+set.seed(77654)
+
+sample <- sample.int(n = nrow(data), size = 0.6*nrow(data), replace = FALSE)
+train <- data[sample,]
+
+rem <- data[-sample,]
+sample2 <- sample.int(n = nrow(rem), size = 0.2*nrow(data), replace = FALSE)
+test <- data[sample2,]
+validn <- data[-sample2,]
+```

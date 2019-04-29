@@ -1,0 +1,20 @@
+---
+title: "DA5030.A3.Parpattedar"
+author: "Shruti Parpattedar"
+date: "February 3, 2019"
+output: pdf_document
+---
+
+Question 1
+Downloading and loading the dataset into R
+
+```{r}
+prc <- read.csv("prostate_cancer.csv", stringsAsFactors = FALSE)
+```
+
+Question 2
+
+```{r}
+
+```
+
