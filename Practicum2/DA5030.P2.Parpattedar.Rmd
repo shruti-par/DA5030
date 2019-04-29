@@ -1,0 +1,348 @@
+---
+title: "DA5030.P2.Parpattedar"
+author: "Shruti Parpattedar"
+date: "March 17, 2019"
+output: pdf_document
+---
+Note : Collaborated with Shantanu Bafna on Problem 2
+# Problem 1
+
+## Question 1
+Import the data and add headers to the data frame.
+```{r Question1.1}
+data <- read.csv("income.csv", header = FALSE, fileEncoding = "UTF-8-BOM")
+names(data) <- c("Age", "WorkClass", "fnlwgt", "Education", "Edu-num", "Marital-status", "Occupation", "Relationship", "Race", "Sex", "Cap-gain", "Cap-loss", "HrsPerWeek", "NativeCountry", "Income")
+str(data)
+```
+
+## Question 2
+After exploring the data, I noticed that most of the variables are almost normally distributed. 
+
+ANother observation was that fnlwgt is right skewed, so we can apply the log transform to rectify the skew.
+```{r Question1.2}
+library(psych)
+pairs.panels(data[,1:7])
+pairs.panels(data[,8:15])
+hist(data$fnlwgt)
+hist(log(data$fnlwgt))
+```
+
+## Question 3
+Using the categorical variables to create the frequency and likelihood tables.
+
+Next, implementing a Naive Bayes Classifer
+```{r Question1.3}
+library(gmodels)
+library(dplyr)
+
+# Column numbers for the categorical variables
+cat_variables <- c(2,4,6,7,8,9,10,14,15)
+
+# Dataset with only categorical variables
+cat_data <- data[, cat_variables]
+
+createLikelihoodT <- function(dataset)
+{
+  n <- ncol(dataset) - 1 # excluding the Income column from the count
+  
+  # Creating the initial frequency and likelihood tables using only the first categorical variable 
+  # with the income variable
+  # firstTable <- CrossTable(dataset$Income, dataset[, 1])
+  freqTable <- table(dataset$Income, dataset[, 1])
+  # freqTable <- firstTable$t
+  likelihoodTable <- matrix(c(freqTable[1,]/sum(freqTable[1,]), freqTable[2,]/sum(freqTable[2,])), nrow = 2, 
+                            byrow = TRUE)
+  colnames(likelihoodTable) <- colnames(freqTable)
+  
+  # Cbinding the frequency and likelihood tables for the remaining categorical variables to the intial tables 
+  # for(i in 2:n)
+  # {
+  #   newTable <- CrossTable(dataset$Income, dataset[,i])
+  #   freqTable <- cbind(freqTable, newTable$t)
+  #   likelihoodTable <- cbind(likelihoodTable, newTable$prop.row)
+  # }
+  # return(likelihoodTable)
+  
+  for(i in 2:n)
+  {
+    new_freq_Table <- table(dataset$Income, dataset[,i])
+    freqTable <- cbind(freqTable, new_freq_Table)
+    new_LH_Table <- matrix(c(new_freq_Table[1,]/sum(new_freq_Table[1,]), new_freq_Table[2,]/sum(new_freq_Table[2,])), nrow = 2, byrow = TRUE)
+    colnames(new_LH_Table) <- colnames(new_freq_Table)
+    likelihoodTable <- cbind(likelihoodTable, new_LH_Table)
+  }
+  return(likelihoodTable)
+}
+
+likelihoodTable_orig <- createLikelihoodT(cat_data)
+
+# Implementing the Naive Bayes classifier that returns the probability of the income being less than 50k
+naiveBayes <- function(values, LH_Table)
+{
+  # P(<=50k)*product of P(<=50k and parameters)
+  P_le50k <- table(data$Income)[1]*prod(LH_Table[1, values])
+  
+  # P(>50k)*product of P(>50k and parameters)
+  P_gt50k <- table(data$Income)[2]*prod(LH_Table[2, values])
+  
+  result <- P_le50k / (P_le50k + P_gt50k)
+  
+  # Returning probability of income being <=50k using the values calculated above
+  return(ifelse(result < 0.5, ">50k", "<=50k"))
+}
+
+```
+
+## Question 4
+Using the classifier to predict the outcome for the new data
+```{r Question1.4}
+vals <- c("White", "Female", "Federal-gov", "Bachelors", "India")
+output <- naiveBayes(vals, likelihoodTable_orig)
+paste("Result is", output)
+```
+
+## Question 5
+10-fold cross validation on the classifier
+```{r Question1.5}
+library(caret)
+folds <- createFolds(data$Income)
+
+nb_results <- lapply(folds, function(x)
+{
+  train_data <- cat_data[-x,]
+  test_data <- cat_data[x,]
+  likelihood_train <- createLikelihoodT(train_data)
+  test_res <- data.frame(Prediction = rep(" ", nrow(test_data)), stringsAsFactors = FALSE)
+  
+  for(i in 1:nrow(test_data))
+  {
+    test_res$Prediction[i] <- naiveBayes(unlist(test_data[i,]), likelihood_train)[[1]]
+  }
+  
+  # Confusion matrix
+  conf_mat <- table(test_data$Income, test_res$Prediction)
+  
+  # assigning the accuracy of this model to the vector
+  sum(diag(conf_mat))/sum(conf_mat)
+
+})
+
+paste("Accuracy =", mean(unlist(nb_results)))
+
+```
+
+# Problem 2
+
+## Question 1
+Finding and eliminating outliers
+```{r Question2.1}
+data_Q2 <- read.csv("uffidata.csv", stringsAsFactors = FALSE)
+data_Q2 <- data_Q2[-100,]
+data_Q2$Sale.Price <- as.numeric(gsub(",", "",data_Q2$Sale.Price))
+str(data_Q2)
+bsmnt_mean   <- mean(data_Q2$Bsmnt.Fin_SF)
+bsmnt_sd     <- sd(data_Q2$Bsmnt.Fin_SF)
+bsmnt_zscore <- (bsmnt_mean - data_Q2$Bsmnt.Fin_SF) / bsmnt_sd
+
+o <- which(bsmnt_zscore > 1)
+data2 <- data_Q2[-o,]
+
+Lot.Area_mean   <- mean(data2$Lot.Area)
+Lot.Area_sd     <- sd(data2$Lot.Area)
+Lot.Area_zscore <- (Lot.Area_mean - data2$Lot.Area) / Lot.Area_sd
+o <- which(Lot.Area_zscore > 1)
+data3 <- data2[-o,]
+
+final_data <- data3
+```
+
+## Question 2
+Full correlation matrix
+```{R Question2.2}
+cor(final_data)
+```
+
+## Question 3
+Multiple regression model for Sales Price
+```{r Question2.3}
+model_Q2 <- lm(Sale.Price ~ ., final_data)
+summary(model_Q2)
+
+model2_Q2 <- lm(Sale.Price ~ Year.Sold + Enc.Pk.Spaces + Living.Area_SF + Pool, final_data)
+summary(model2_Q2)
+```
+
+## Question 4
+UFFI and change in the value of a property
+```{r}
+UFFI.glm <- glm(formula = UFFI.IN ~ Sale.Price, 
+                data = final_data, 
+                family = binomial)
+
+newdata <- data.frame(Sale.Price = 128304.2)
+
+predict(UFFI.glm, newdata, type = "response")
+```
+
+## Question 5
+Predicting Sales price for the given data along with its 95% CI.
+```{r Quetion2.5}
+model1 <- lm(Sale.Price ~ X45.Yrs. + Bsmnt.Fin_SF + Brick.Ext + Lot.Area + Enc.Pk.Spaces + Living.Area_SF + UFFI.IN + Central.Air + Pool, data = data_Q2)
+
+sm1 <- summary(model1)
+
+X45      <- 1
+Basement <- 0
+Brick    <- 0
+LotArea  <- 7800
+Parking  <- 1
+Living   <- 1720
+UFFI     <- 1
+Central  <- 0
+Pool     <- 0
+salePrice <- sm1$coefficients[[1]] + sm1$coefficients[[2]]*X45 + sm1$coefficients[[3]]*Basement + sm1$coefficients[[4]]*Brick + sm1$coefficients[[5]]*LotArea + sm1$coefficients[[6]]*Parking + sm1$coefficients[[7]]*Living + sm1$coefficients[[8]]*UFFI + sm1$coefficients[[9]]*Central + sm1$coefficients[[10]]*Pool
+
+paste("Predicted Value =", salePrice)
+paste("95% CI =", salePrice - 1.96*22230, salePrice + 1.96*22230)
+```
+
+
+# Problem 3
+
+## Question 1
+Importing data
+```{r Question3.1}
+data_Q3 <- read.csv("bank-full.csv", sep = ";")
+
+validation_Q3 <- read.csv("bank.csv", sep = ";")
+```
+
+## Question 2
+Creating dummy codes.
+
+Next, implementing a logistic regression model.
+```{r Question3.2}
+data_Q3$job1 <- ifelse(data_Q3$job == "admin.", 1, 0)
+data_Q3$job2 <- ifelse(data_Q3$job == "unknown", 1, 0)
+data_Q3$job3 <- ifelse(data_Q3$job == "unemployed", 1, 0)
+data_Q3$job4 <- ifelse(data_Q3$job == "management", 1, 0)
+data_Q3$job5 <- ifelse(data_Q3$job == "housemaid", 1, 0)
+data_Q3$job6 <- ifelse(data_Q3$job == "entrepreneur", 1, 0)
+data_Q3$job7 <- ifelse(data_Q3$job == "student", 1, 0)
+data_Q3$job8 <- ifelse(data_Q3$job == "blue-collar", 1, 0)
+data_Q3$job9 <- ifelse(data_Q3$job == "self-employed", 1, 0)
+data_Q3$job10 <- ifelse(data_Q3$job == "retired", 1, 0)
+data_Q3$job11 <- ifelse(data_Q3$job == "technician", 1, 0)
+
+data_Q3$marital1 <- ifelse(data_Q3$marital == "married", 1, 0)
+data_Q3$marital2 <- ifelse(data_Q3$marital == "divorced", 1, 0)
+
+data_Q3$edu1 <- ifelse(data_Q3$education == "secondary", 1, 0)
+data_Q3$edu2 <- ifelse(data_Q3$education == "primary", 1, 0)
+data_Q3$edu3 <- ifelse(data_Q3$education == "tertiary", 1, 0)
+
+data_Q3$default10 <- ifelse(data_Q3$default == "yes", 1, 0)
+
+data_Q3$housing10 <- ifelse(data_Q3$housing == "yes", 1, 0)
+
+data_Q3$loan10 <- ifelse(data_Q3$loan == "yes", 1, 0)
+
+data_Q3$contact1 <- ifelse(data_Q3$contact == "telephone", 1, 0)
+data_Q3$contact2 <- ifelse(data_Q3$contact == "cellular", 1, 0)
+
+data_Q3$month1 <- ifelse(data_Q3$month == "jan", 1, 0)
+data_Q3$month2 <- ifelse(data_Q3$month == "feb", 2, 0)
+data_Q3$month3 <- ifelse(data_Q3$month == "mar", 3, 0)
+data_Q3$month4 <- ifelse(data_Q3$month == "apr", 4, 0)
+data_Q3$month5 <- ifelse(data_Q3$month == "may", 5, 0)
+data_Q3$month6 <- ifelse(data_Q3$month == "jun", 6, 0)
+data_Q3$month7 <- ifelse(data_Q3$month == "jul", 7, 0)
+data_Q3$month8 <- ifelse(data_Q3$month == "aug", 8, 0)
+data_Q3$month9 <- ifelse(data_Q3$month == "sep", 9, 0)
+data_Q3$month10 <- ifelse(data_Q3$month == "oct", 10, 0)
+data_Q3$month11 <- ifelse(data_Q3$month == "nov", 11, 0)
+
+data_Q3$poutcome1 <- ifelse(data_Q3$poutcome == "unknown", 1, 0)
+data_Q3$poutcome2 <- ifelse(data_Q3$poutcome == "other", 1, 0)
+data_Q3$poutcome3 <- ifelse(data_Q3$poutcome == "failure", 1, 0)
+
+data_Q3$y10 <- ifelse(data_Q3$y == "yes", 1, 0)
+
+model_logreg <- glm(y10 ~ age + 
+                      job1 + job2 + job3 + job4 + job5 + 
+                      job6 + job7 + job8 + job9 + job10 + job11 + 
+                      marital1 + marital2 + 
+                      edu1 + edu2 + edu3 +
+                      default10 + housing10 + loan10 + balance +
+                      contact1 + contact2 + day + 
+                      month1 + month2 + month3 + month4 + month5 + month6 +
+                      month7 + month8 + month9 + month10 + month11 + duration + 
+                      campaign + pdays + previous + 
+                      poutcome1 + poutcome2 + poutcome3, data = data_Q3)
+
+model2 <- step(model_logreg, direction = "backward")
+```
+
+## Question 3
+Above model as an equation
+```{r Question3.3}
+model2$call[[2]]
+```
+
+## Question 4
+Prediction accuracy
+```{r Question3.4}
+validation_Q3$job1 <- ifelse(validation_Q3$job == "admin.", 1, 0)
+validation_Q3$job2 <- ifelse(validation_Q3$job == "unknown", 1, 0)
+validation_Q3$job3 <- ifelse(validation_Q3$job == "unemployed", 1, 0)
+validation_Q3$job4 <- ifelse(validation_Q3$job == "management", 1, 0)
+validation_Q3$job5 <- ifelse(validation_Q3$job == "housemaid", 1, 0)
+validation_Q3$job6 <- ifelse(validation_Q3$job == "entrepreneur", 1, 0)
+validation_Q3$job7 <- ifelse(validation_Q3$job == "student", 1, 0)
+validation_Q3$job8 <- ifelse(validation_Q3$job == "blue-collar", 1, 0)
+validation_Q3$job9 <- ifelse(validation_Q3$job == "self-employed", 1, 0)
+validation_Q3$job10 <- ifelse(validation_Q3$job == "retired", 1, 0)
+validation_Q3$job11 <- ifelse(validation_Q3$job == "technician", 1, 0)
+
+validation_Q3$marital1 <- ifelse(validation_Q3$marital == "married", 1, 0)
+validation_Q3$marital2 <- ifelse(validation_Q3$marital == "divorced", 1, 0)
+
+validation_Q3$edu1 <- ifelse(validation_Q3$education == "secondary", 1, 0)
+validation_Q3$edu2 <- ifelse(validation_Q3$education == "primary", 1, 0)
+validation_Q3$edu3 <- ifelse(validation_Q3$education == "tertiary", 1, 0)
+
+validation_Q3$default10 <- ifelse(validation_Q3$default == "yes", 1, 0)
+
+validation_Q3$housing10 <- ifelse(validation_Q3$housing == "yes", 1, 0)
+
+validation_Q3$loan10 <- ifelse(validation_Q3$loan == "yes", 1, 0)
+
+validation_Q3$contact1 <- ifelse(validation_Q3$contact == "telephone", 1, 0)
+validation_Q3$contact2 <- ifelse(validation_Q3$contact == "cellular", 1, 0)
+
+validation_Q3$month1 <- ifelse(validation_Q3$month == "jan", 1, 0)
+validation_Q3$month2 <- ifelse(validation_Q3$month == "feb", 2, 0)
+validation_Q3$month3 <- ifelse(validation_Q3$month == "mar", 3, 0)
+validation_Q3$month4 <- ifelse(validation_Q3$month == "apr", 4, 0)
+validation_Q3$month5 <- ifelse(validation_Q3$month == "may", 5, 0)
+validation_Q3$month6 <- ifelse(validation_Q3$month == "jun", 6, 0)
+validation_Q3$month7 <- ifelse(validation_Q3$month == "jul", 7, 0)
+validation_Q3$month8 <- ifelse(validation_Q3$month == "aug", 8, 0)
+validation_Q3$month9 <- ifelse(validation_Q3$month == "sep", 9, 0)
+validation_Q3$month10 <- ifelse(validation_Q3$month == "oct", 10, 0)
+validation_Q3$month11 <- ifelse(validation_Q3$month == "nov", 11, 0)
+
+validation_Q3$poutcome1 <- ifelse(validation_Q3$poutcome == "unknown", 1, 0)
+validation_Q3$poutcome2 <- ifelse(validation_Q3$poutcome == "other", 1, 0)
+validation_Q3$poutcome3 <- ifelse(validation_Q3$poutcome == "failure", 1, 0)
+
+validation_Q3$y10 <- ifelse(validation_Q3$y == "yes", 1, 0)
+final_logreg <- glm(model2$call[[2]], data = data_Q3)
+pred <- predict(final_logreg, validation_Q3)
+pred <- ifelse(pred < 0.5, 0, 1)
+
+acc <- sum(pred == validation_Q3$y10) / length(pred) * 100
+paste0("Prediction accuracy = ", acc, "%")
+
+```
+

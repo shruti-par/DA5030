@@ -1,0 +1,244 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{R Libraries}
+library(tidyverse)
+```
+
+
+```{R Problem 1.1}
+glassIdentDb           <- read.csv("GlassID.csv", header = FALSE, stringsAsFactors = FALSE)
+
+colnames(glassIdentDb) <- c("ID", "RI", "Na", "Mg", "Al", "Si", "K", "Ca", "Ba", "Fe", "TypeOfGlass")
+```
+
+
+```{R Problem 1.3}
+h <- hist(glassIdentDb$Na, col = "red", xlab = "Sodium weight % in corresponding oxide", main = "Histogram with Normal Curve", breaks = 10)
+
+xfit <- seq(min(glassIdentDb$Na), max(glassIdentDb$Na), length = 40)
+
+yfit <- dnorm(xfit,mean=mean(glassIdentDb$Na),sd=sd(glassIdentDb$Na))
+
+yfit <- yfit * diff(h$mids[1:2]) * length(glassIdentDb$Na)
+
+lines(xfit, yfit, col="blue", lwd=2)
+```
+
+
+```{R Problem 1.4}
+#k-NN algorithm requires the data to be normalized
+```
+
+
+```{R Problem 1.5}
+glassIdentDb <- glassIdentDb[,-1]
+
+normalize <- function(x){
+  return ((x - mean(x)) / sd(x))
+}
+
+glassIdentDb_n <- as.data.frame(lapply(glassIdentDb[1:9], normalize))
+```
+
+
+```{R Problem 1.6}
+set.seed(9850)
+gp                         <- runif(nrow(glassIdentDb_n))
+glassIdentDb_n$TypeOfGlass <- glassIdentDb$TypeOfGlass
+glassIdentDb_n             <- glassIdentDb_n[order(gp),]
+
+glassIdentDb_train <- glassIdentDb_n[1:107,1:9]
+glassIdentDb_test  <- glassIdentDb_n[108:214,1:9]
+
+glassIdentDb_train_target <- glassIdentDb_n[1:107,10]
+glassIdentDb_test_target <- glassIdentDb_n[108:214,10]
+```
+
+
+```{R Problem 1.7}
+dist <- function(p,q)
+{
+  d <- 0
+  for (i in 1:length(p)) {
+    d <- d + (p[i] - q[i])^2
+  }
+  dist <- sqrt(d)
+}
+
+neighbors <- function(train,u){
+  m <- nrow(train)
+  ds <- numeric(m)
+  for (i in 1:m) {
+    p <- train[i,]
+    ds[i] <- dist(p,u)
+  }
+  neighbors <-ds
+}
+
+k.closest <- function(neighbors,k){
+  ordered.neighbors <- order(as.numeric(neighbors))
+  k.closest <- ordered.neighbors[1:k]
+}
+Mode <- function(x) 
+{
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+ 
+#  knn <- function (train, u, k)
+#  {
+#    nb <- neighbors(train,u)
+#    nb <- as.numeric(nb)
+#    f <- k.closest(nb,k)
+# #   knn <- Mode(glassIdentDb_n$TypeOfGlass[f])
+#  }
+
+
+unknown     <- cbind(1.51721,12.53,3.48,1.39,73.39,0.60,8.55,0.00,0.08)
+unknown     <- as.data.frame(unknown)
+unknown[2,] <- c(1.4897,12.71,1.85,1.81,72.69,0.52,10.01,0.00,0.02)
+colnames(unknown) <- colnames(glassIdentDb_n[1:9])
+
+unknown_n <- as.data.frame(lapply(unknown[1:9], normalize))
+#
+# x <- c(4.2, 601, 7.8, 14.2, 6)
+# 
+# StoreSize <- (4.2 - mean(FSData$StoreSize)) / sd(FSData$StoreSize)
+# InvValue <- (601 - mean(FSData$InvValue)) / sd(FSData$InvValue)
+# AdvBudget <- (7.8 - mean(FSData$AdvBudget)) / sd(FSData$AdvBudget)
+# DistrictSize <- (14.2 - mean(FSData$DistrictSize)) / sd(FSData$DistrictSize)
+# NumComp <- (6 - mean(FSData$NumComp)) / sd(FSData$NumComp)
+
+RI <- (1.51721 - mean(glassIdentDb$RI)) / sd(glassIdentDb$RI)
+Na <- (12.53 - mean(glassIdentDb$Na)) / sd(glassIdentDb$Na)
+Mg <- (3.48 - mean(glassIdentDb$Mg)) / sd(glassIdentDb$Mg)
+Al <- (1.39 - mean(glassIdentDb$Al)) / sd(glassIdentDb$Al)
+Si <- (73.39 - mean(glassIdentDb$Si)) / sd(glassIdentDb$Si)
+K  <- (0.60 - mean(glassIdentDb$K)) / sd(glassIdentDb$K)
+Ca <- (8.55 - mean(glassIdentDb$Ca)) / sd(glassIdentDb$Ca)
+Ba <- (0 - mean(glassIdentDb$Ba)) / sd(glassIdentDb$Ba)
+Fe <- (0.08 - mean(glassIdentDb$Fe)) / sd(glassIdentDb$Fe)
+#
+
+unknown.1 <- c(RI,Na,Mg,Al,Si,K,Ca,Ba,Fe)
+
+k <- 10
+#for first set of unknown values
+nb <- neighbors(glassIdentDb_n[,1:9], unknown.1)
+nb <- as.numeric(nb)
+f <- k.closest(nb,k)
+Mode(glassIdentDb_n$TypeOfGlass[f])
+
+#for second set of unknown values
+RI2 <- (1.4897 - mean(glassIdentDb$RI)) / sd(glassIdentDb$RI)
+Na2 <- (12.71 - mean(glassIdentDb$Na)) / sd(glassIdentDb$Na)
+Mg2 <- (1.85 - mean(glassIdentDb$Mg)) / sd(glassIdentDb$Mg)
+Al2 <- (1.81 - mean(glassIdentDb$Al)) / sd(glassIdentDb$Al)
+Si2 <- (72.69 - mean(glassIdentDb$Si)) / sd(glassIdentDb$Si)
+K2  <- (0.52 - mean(glassIdentDb$K)) / sd(glassIdentDb$K)
+Ca2 <- (10.01 - mean(glassIdentDb$Ca)) / sd(glassIdentDb$Ca)
+Ba2 <- (0 - mean(glassIdentDb$Ba)) / sd(glassIdentDb$Ba)
+Fe2 <- (0.02 - mean(glassIdentDb$Fe)) / sd(glassIdentDb$Fe)
+
+unknown.2 <- c(RI2,Na2,Mg2,Al2,Si2,K2,Ca2,Ba2,Fe2)
+
+nb2 <- neighbors(glassIdentDb_n[,1:9], unknown.2)
+nb2 <- as.numeric(nb2)
+f2 <- k.closest(nb2,k)
+Mode(glassIdentDb_n$TypeOfGlass[f2])
+
+
+```
+
+```{R Problem 1.8}
+require(class)
+k1 <-knn(train = glassIdentDb_n[,1:9], 
+         test = unknown.1, 
+         k = 14, 
+         cl = glassIdentDb_n$TypeOfGlass)
+k1
+
+k2 <-knn(train = glassIdentDb_n[,1:9], 
+         test = unknown.2, 
+         k = 14, 
+         cl = glassIdentDb_n$TypeOfGlass)
+
+k2
+
+```
+
+```{R Problem 1.9}
+
+```
+
+
+```{R Problem 1.10}
+glassIdentDb_test_pred <- knn(train = glassIdentDb_train, test = glassIdentDb_test, cl = glassIdentDb_train_target, k = 5)
+
+library(gmodels)
+CrossTable(x = glassIdentDb_test_target, y = glassIdentDb_test_pred)
+```
+
+
+
+
+
+```{R Problem 2.1}
+homeKingCounty <- read.csv("kc_house_data.csv", header = TRUE, stringsAsFactors = FALSE)
+```
+
+
+```{R Problem 2.2}
+target_data <- as.data.frame(homeKingCounty$price)
+
+train_data  <- as.data.frame(homeKingCounty[,4:15])
+
+```
+
+
+```{R Problem 2.3}
+
+normalize_minMax <- function(x){
+  return (x - min(x)) / (max(x) - min(x))
+}
+
+list_column <- c(1,2,3,4,5,8,9,10,11,12)
+train_data_n <- as.data.frame(lapply(train_data[,list_column], normalize_minMax))
+```
+
+
+
+```{R Problem 2.4}
+knn.reg <- function (u,train_data, target_data, k)
+{
+  nb <- neighbors(train_data,u)
+  nb <- as.numeric(nb)
+  f <- k.closest(nb,k)
+  knn <- mean(target_data$`homeKingCounty$price`[f])
+  
+}
+
+```
+
+```{R Problem 2.5}
+new_home <- c(4,3,4852,9812,3,0,1,3,11,1860,820,1962)
+
+bedrooms <- (4 - min(train_data_n$bedrooms)) / (max(train_data_n$bedrooms) - min(train_data_n$bedrooms))
+bathrooms <- (4 - min(train_data_n$bathrooms)) / (max(train_data_n$bathrooms) - min(train_data_n$bathrooms))
+sqft_living <- (4 - min(train_data_n$sqft_living)) / (max(train_data_n$sqft_living) - min(train_data_n$sqft_living))
+sqft_lot <- (4 - min(train_data_n$sqft_lot)) / (max(train_data_n$sqft_lot) - min(train_data_n$sqft_lot))
+floors <- (4 - min(train_data_n$floors)) / (max(train_data_n$floors) - min(train_data_n$floors))
+condition <- (4 - min(train_data_n$condition)) / (max(train_data_n$condition) - min(train_data_n$condition))
+grade <- (4 - min(train_data_n$grade)) / (max(train_data_n$grade) - min(train_data_n$grade))
+sqft_above <- (4 - min(train_data_n$sqft_above)) / (max(train_data_n$sqft_above) - min(train_data_n$sqft_above))
+sqft_basement <- (4 - min(train_data_n$sqft_basement)) / (max(train_data_n$sqft_basement) - min(train_data_n$sqft_basement))
+yr_built <- (4 - min(train_data_n$yr_built)) / (max(train_data_n$yr_built) - min(train_data_n$yr_built))
+
+new_home2 <- c(bedrooms,bathrooms,sqft_living,sqft_lot,floors,condition,grade,sqft_above,sqft_basement,yr_built)
+                                                
+mean_knn <- knn.reg(new_home2, train_data_n, target_data, 4)
+```
+

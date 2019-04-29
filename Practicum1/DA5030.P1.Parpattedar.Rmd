@@ -1,0 +1,179 @@
+---
+title: "DA5030.P1.Parpattedar"
+author: "Shruti Parpattedar"
+date: "February 8, 2019"
+output: pdf_document
+---
+
+# Problem 1
+
+## Question 1
+Reading Glass Identification Database and assigning column names
+```{r Question1.1}
+data <- read.csv("GlassID.csv", header = FALSE, fileEncoding = "UTF-8-BOM")
+names(data) = c("ID", "RI", "Na", "Mg", "Al", "Si", "K", "Ca", "Ba", "Fe", "Type")
+```
+
+## Question 2
+Exploring the database
+```{r Question1.2}
+str(data)
+```
+
+## Question 3
+Histogram of Na column with an overlaying normal curve. Looking at the graph and curve, the data looks to be normally distributed.
+```{r Question1.3}
+na <- data$Na 
+na.hist <- hist(na, breaks = 10, xlab = "Sodium Levels", col = "lightgrey",
+          main = "Histogram with Normal Curve") 
+xfit <- seq(min(na), max(na), length = 40) 
+yfit <- dnorm(xfit, mean = mean(na), sd = sd(na)) 
+yfit <- yfit * diff(na.hist$mids[1:2]) * length(na) 
+lines(xfit, yfit, col="blue", lwd=2)
+```
+
+## Question 4
+The kNN algorithm is a non-parametric method, which means that it is a simple, easy to use algorithm that makes no assumptions about the data. So, it does not need the data to be normally distributed. But, the calculations will prove to be meaningless if there are substantial differences in the scale of the dimensions.
+
+## Question 5
+Removing the first (index) column and normalizing all the remaining columns except the last(Type) column
+```{r Question1.5}
+data <- data[,-1]
+norm_data <- cbind(scale(data[,1:9], center = TRUE, scale = TRUE), Type = data$Type)
+```
+
+## Question 6
+Dividing the dataset randomly into training and validation datasets.
+```{r Question1.6}
+sample <- sample.int(n = nrow(norm_data), size = 0.5*nrow(norm_data), replace = FALSE)
+validn <- norm_data[sample,]
+train <- norm_data[-sample,]
+```
+
+## Question 7
+Building a kNN prediction function to predict the type for the two given cases.
+```{r Question1.7}
+getMode <- function(x) {
+  uniq <- unique(x)
+  uniq[which.max(tabulate(match(x, uniq)))]
+}
+
+knn_pred <- function(df, unk, k)
+{
+  n <- nrow(df)
+  d <- numeric(n)
+  for (i in 1:n) 
+  {
+    d[i] <- sqrt(sum((df[i,1:9] - unk[1:9])^2))
+  }
+  o <- order(d)
+  getMode(df[o[1:k], 10])
+}
+
+eg1 <- round(c(1.51721, 12.53, 3.48, 1.39, 73.39, 0.60, 8.55, 0.00, 0.08), digits = 5)
+eg2 <- round(c(1.4897, 12.71, 1.85, 1.81, 72.69, 0.52, 10.01, 0.00, 0.02), digits = 5)
+
+#eg2 <- scale(eg2, center = TRUE, scale = TRUE)
+
+for(i in 1:9)
+{
+  eg1[i] <- round((eg1[i] - mean(data[,i])) / sd(data[,i]), digits = 5)
+  eg2[i] <- round((eg2[i] - mean(data[,i])) / sd(data[, i]), digits = 5)
+}
+
+paste("Prediction for case 1 - ", knn_pred(norm_data, eg1, 10))
+paste("Prediction for case 2 - ", knn_pred(norm_data, eg2, 10))
+  
+```
+
+## Question 8
+Using the knn function from the class package to predict the type of the two given cases.
+```{r Question1.8}
+library(class)
+paste("Prediction for case 1 - ", knn(norm_data[,1:9], eg1, cl = norm_data[,10], 14))
+paste("Prediction for case 2 - ", knn(norm_data[,1:9], eg2, cl = norm_data[,10], 14))
+```
+
+## Question 9
+Plotting k values from 2 to 15 against the percentage of error using ggplot.
+```{r Question1.9}
+library(ggplot2)
+train_d <- train[,1:9]
+test_d <- validn[,1:9]
+train_tar <- train[,10]
+train_pred <- rep(0, nrow(train))
+incorr_cl <- data.frame(n = c(2:15), perc_error = rep(NA, 14))
+for(n in 2:15)
+{
+  train_pred <- knn(train = train_d, test = test_d, train_tar, n)
+  incorr_cl[n-1,2] <- sum(train_tar != train_pred)/nrow(train)*100
+}
+
+ggplot(incorr_cl, aes(x = incorr_cl[,1], y = incorr_cl[,2])) + geom_point() + 
+  xlab("K Value") + ylab("Error Percentage")
+```
+
+## Question 10
+Cross-table confusion matrix showing the accuracy of the classification using knn from the class package with k = 5.
+```{r Question1.10}
+library(gmodels)
+train_pred <- knn(train = train[,1:9], test = validn[,1:9], cl = train[,10], k = 5)
+CrossTable(train_tar, train_pred, prop.chisq = FALSE)
+```
+
+
+# Problem 2
+
+## Question 1
+Exploring the home prices in King County (USA) dataset.
+```{r Question2.1}
+data2 <- read.csv("kc_house_data.csv", header = TRUE, stringsAsFactors = FALSE)
+str(data2)
+```
+
+## Question 2
+Creating the target and training datasets
+```{r Question2.2}
+target_data <- data2$price
+train_data <- data2[,4:15]
+```
+
+## Question 3
+Normalizing the training data using min-max normalization
+```{r Question2.3}
+list <- c(1,2,3,4,5,8,9,10,11,12)
+for(i in list)
+{
+  train_data[,i] <- (train_data[,i] - min(train_data[,i])) / (max(train_data[,i]) -
+                                                               min(train_data[,i]))
+}
+```
+
+## Question 4
+Building a knn regression function.
+```{r Question2.4}
+kNN.reg <- function(new_data, target_data, train_data, k)
+{
+  n <- nrow(train_data)
+  d <- rep(0,n)
+  for (i in 1:n) 
+  {
+    d[i] <- sqrt(sum((train_data[i,1:12] - new_data[1:12])^2))
+  }
+  o <- order(d)
+  m <- mean(target_data[o[1:k]]) 
+  return(m)
+}
+```
+
+## Question 5
+Using the knn.reg function to predict the price values for the given set of values.
+```{r Question2.5}
+new_data <- c(4, 3, 4852, 9812, 3, 0, 1, 3, 11, 1860, 820, 1962)
+for(i in list)
+{
+  new_data[i] <- (new_data[i] - min(train_data[,i])) / (max(train_data[,i]) -
+                                                               min(train_data[,i]))
+}
+kNN.reg(new_data, target_data, train_data, 4)
+```
