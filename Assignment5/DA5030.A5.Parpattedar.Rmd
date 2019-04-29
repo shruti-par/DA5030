@@ -1,0 +1,195 @@
+---
+title: "DA5030.A5.Parpattedar"
+author: "Shruti Parpattedar"
+date: "February 24, 2019"
+output: pdf_document
+---
+
+# Question 1
+## Step 1 – Collecting data 
+Downloading the credit dataset
+
+## Step 2 - Exploring and preparing the data 
+Exploring the dataset and displaying the various statistics of a few columns
+```{r Question1.2.1}
+credit <- read.csv("credit.csv")
+credit$default <- factor(credit$default)
+str(credit)
+table(credit$checking_balance)
+table(credit$savings_balance)
+summary(credit$months_loan_duration)
+summary(credit$amount)
+table(credit$default)
+
+```
+
+## Data preparation – Creating random training and test datasets 
+Creating training and testing datatsets.
+Checking if the data is proportionally distributed between the two sets.
+```{r Question1.2.2}
+set.seed(123)
+train_sample <- sample(1000, 900)
+str(train_sample)
+credit_train <- credit[train_sample, ]
+credit_test <- credit[-train_sample, ]
+prop.table(table(credit_train$default))
+prop.table(table(credit_test$default))
+```
+
+## Step 3 – training a model on the data 
+Fitting classification tree models using Quinlan's C5.0 algorithm to the training dataset
+```{r Question1.3}
+library(C50)
+credit_model <- C5.0(credit_train[-17], credit_train$default)
+credit_model
+summary(credit_model)
+
+```
+
+## Step 4 – evaluating model performance
+Using the classifer to make predictions, using the test dataset
+Results show that the model has an error rate of(19+7) = 26%
+```{r Question1.4}
+library(gmodels)
+credit_pred <- predict(credit_model, credit_test)
+CrossTable(credit_test$default, credit_pred,
+ prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+ dnn = c('actual default', 'predicted default'))
+
+```
+
+## Step 5 – Improving model performance
+Using adaptive boosting to improve model performance
+Although this model resulted in a higher error rate of 41 percent, it has resulted in a steep decrease in the false negatives at the expense of false positives
+```{r Question1.5}
+# Using 10 trials
+credit_boost10 <- C5.0(credit_train[-17], credit_train$default, trials = 10)
+
+# We observe the tree size has shrunk form 54 to 49.7
+credit_boost10
+
+# Viewing model performance
+summary(credit_boost10)
+
+# Making prediction using the new model
+credit_boost_pred10 <- predict(credit_boost10, credit_test)
+CrossTable(credit_test$default, credit_boost_pred10,
+ prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+ dnn = c('actual default', 'predicted default'))
+
+# Defining cost matirx dimensions
+matrix_dimensions <- list(c("no", "yes"), c("no", "yes"))
+names(matrix_dimensions) <- c("predicted", "actual")
+matrix_dimensions
+
+# Assigning penalty costs
+error_cost <- matrix(c(0, 1, 4, 0), nrow = 2)
+error_cost
+
+# Applying decision tree using cost parameter and making predictions
+credit_cost <- C5.0(credit_train[-17], credit_train$default, costs = error_cost)
+credit_cost_pred <- predict(credit_cost, credit_test)
+CrossTable(credit_test$default, credit_cost_pred,
+ prop.chisq = FALSE, prop.c = FALSE, prop.r = FALSE,
+ dnn = c('actual default', 'predicted default'))
+```
+
+# Quesiton 2
+## Step 1 – Collecting data 
+Downloading the mushroom dataset
+
+## Step 2 - Exploring and preparing the data 
+Exploring the dataset and setting the veil_type to null since this dataset contains only one type of that variable (1 level only)
+```{r Question 2.2}
+mushrooms <- read.csv("mushrooms.csv", stringsAsFactors = TRUE)
+str(mushrooms)
+mushrooms$veil_type <- NULL
+# Displaying the distribution of the two types of mushrooms
+table(mushrooms$type)
+```
+
+## Step 3 – Training a model on the data 
+Using the OneR function to train the model using type as the categorical variable
+```{r Question2.3}
+Sys.setenv(JAVA_HOME='C:\\Program Files\\Java\\jre1.8.0_201')
+library(rJava)
+library(RWeka)
+mushroom_1R <- OneR(type ~ ., data = mushrooms)
+mushroom_1R
+```
+
+## Step 4 – Evaluating model performance
+The model correctly predicts 8004 out of 8124 samples, which is ~98.5% of the samples. 
+```{r Question2.4}
+summary(mushroom_1R)
+```
+
+## Step 5 – Improving model performance
+Using the JRip function to improve the model. 
+What JRip does is it creates a set of 9 rules based on the predictors, which are used in making predictions. As can be seen in the summary, it gives 100% accuracy.
+```{r Question2.5}
+mushroom_JRip <- JRip(type ~ ., data = mushrooms)
+mushroom_JRip
+summary(mushroom_JRip)
+```
+
+# Question 3
+
+## k-NN Algorithm
+In this algorithm, first the distances are calculated between the given values and the unknown value. These differences are then ordered and the mode of k (user defined) number of smallest distances is considered as the prediction for the unknown value.
+
+* Uses - kNN can be used for computer vision applications, predicting whether a person will enjoy a book or for identifying patterns in genetic data.
+
+* Strength - well-suited for classification tasks where a concept is difficult to define,  yet the items of similar class type tend to be fairly homogeneous.
+
+* Weakness - this algorithm will struggle to identify class boundaries if the data is noisy and the different groups cannot be easily distinguished.
+
+## Naive Bayes Classification
+In this classification model, a likelihood table is created for the categorical class variable given independent predictor variables using the Bayes rule. It is called naive, because it makes a lot of naive assumptions.
+
+* Uses - Naive Bayes can be used for text classification such as spam filtering, anomaly detection in computer networks or for diagnosing medical conditions given a set of observed symptoms.
+
+* Strengths - it is simple, fast and effective, even with noisy or missing data, requires fewer examples for training and it is also easy to obtain estimated probablity for a prediction
+
+* Weakness - relies on an often-faulty assumption of equally important and independent features, not ideal for datasets with many numeric features, estimated probabilities are less reliable than the predicted classes
+
+
+## C5.0 Decision Trees
+Decision trees utilize a tree structure to model the relationships among the features and the potential outcomes. The C5.0 uses the Quinlan's C5.0 algorithm to fit the classification model
+
+* Uses - can be used for credit scorig models with a clear criteria to accept or reject an applicant, marketing studies of customer behavior or for diagnosis of medical conditions based on laboratory measurements, or the rate of disease progression 
+
+* Strengths - highly automatic learning process, excludes unimportant features, results in a model that can be interpreted without a mathematical background (for relatively small trees) 
+
+* Weakness -  models are often biased toward splits on features having a large number of levels, easy to over- or under- fit the model, large trees can be difficult to interpret and the decisions they make may seem counterintuitive
+
+
+## RIPPER Rules
+RIPPER stands for Repeated Incremental Pruning to Produce Error Reduction. What RIPPER does is it creates a set of rules based on the predictors, which are used in making predictions.
+
+* Uses - Identifying conditions that lead to a mechanical failure in devices, to describe key characteristics of groups for segmentation or to find conditions preceding large fluctuations in stock market.
+
+* Strengths - Generates easy-to-understand,  human-readable rules , efficiently handles large and noisy datasets, model is usually simpler than comparative decision trees
+
+* Weakness - rules generated might defy common sense or expert knowledge, not ideal while working with numeric data, performance might not be as good as more complex models
+
+# Question 4
+
+## Model Ensembles
+A model ensembles are based on the idea that by combining multiple weaker learning models, a stronger learning model is created. To create such an ensemble, first the input training data is used to build a number of models. An allocation function dictates how much of the training data each of the model receives. Then, these models are used to generate a set of predictions. A combination function governs how disagreements among the predictions are reconciled.
+
+Importance and benefits - 
+Model ensembles offer the following performance advantages over single models - 
+* Future problems can be better generalized - incorporating multiple models' opinions, reduces the chances of overfitting.
+* Better performance for small as well as large datasets
+* Ability to synthesize data from distinct domains
+* A more nuanced understanding of difficult learning tasks
+
+Bagging - 
+Bootstrap aggregating or bagging generates a number of training datasets by bootstrap sampling the original training data.These datasets are then used to generate a set of models using a single learning algorithm. The models' predictions are combined using voting (for classification) or averaging (for numeric prediction). Bagging can perform quite well as long as it is used with relatively unstable learners.  Unstable models are essential in order to ensure the ensemble's diversity in spite of only minor variations between the bootstrap training datasets. For this reason, bagging is often used with decision trees, which have the tendency to vary dramatically given minor changes in the input data. 
+
+Boosting - 
+Boosting is a ensemble-based method which boosts the performance of weak learners to attain the performance of stronger learners. Boosting uses ensembles of models trained on resampled data and a vote to determine the final prediction. There are two key distinctions. First, the resampled datasets in boosting are constructed specifically to generate complementary learners. Second, rather than giving each learner an equal vote, boosting gives each learner's vote a weight based on its past performance. Models that perform better have greater influence over the ensemble's final prediction.  Since the models in the ensemble are built to be complementary, it is possible to increase ensemble performance to an arbitrary threshold simply by adding additional classifiers to the group, assuming that each classifier performs better than random chance. 
+
+
+Reference - Machine Learning with R

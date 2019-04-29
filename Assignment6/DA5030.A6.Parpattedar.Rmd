@@ -1,0 +1,212 @@
+---
+title: "DA5030.A6.Parpattedar"
+author: "Shruti Parpattedar"
+date: "March 11, 2019"
+output: pdf_document
+---
+# Problem 1
+
+## Question 1
+Scatterplots and correlations between Age, absences, G1, G2 and G3 using pairs.panel().
+```{r Question1.1}
+library(psych)
+data <- read.csv("student-mat.csv", sep = ";")
+str(data)
+pairs.panels(data[,c(3,30:33)])
+```
+
+## Question 2
+Multiple regression model for the final grade, G3 using G2, G1, F0, F1, absences, schoolsup, health1, health2, internet.
+
+The adjusted R-squared value suggests that the model covers approximately 83% of the variance in the data.
+```{r Question1.2}
+data$F0 <- ifelse(data$failures == 0, 1, 0) 
+data$F1 <- ifelse(data$failures == 1, 1, 0) 
+data$F2 <- ifelse(data$failures == 2, 1, 0) 
+data$schoolsup <- ifelse(data$schoolsup == 'yes', 1, 0)
+data$health1 <- ifelse(data$health == 1,1,0)
+data$health2 <- ifelse(data$health == 2,1,0)
+data$health3 <- ifelse(data$health == 3,1,0)
+data$health4 <- ifelse(data$health == 4,1,0)
+data$internet <- ifelse(data$internet == 'yes', 1,0)
+m <- lm(G3 ~ G2+G1+F0+F1+absences+schoolsup+health1+health2+internet, data = data)
+summary(m)
+```
+
+## Question 3
+Using stepwise backward elimination to remove all non-significant variables from the model used in the previous question. 
+
+The final model for the final grade, G3 uses G2, G1, F1, absences, schoolsup, health2 variables.
+
+AIC used as a backward elimination measure.
+```{r Question1.3}
+m2 <- step(lm(G3 ~ G2+G1+F0+F1+absences+schoolsup+health1+health2+internet, data = data), 
+           direction = "backward")
+
+# Final model
+m2$call[[2]]
+
+# Equation to be used for prediction
+# g3 <- m2$coefficients[[1]] + g2*m2$coefficients[[2]] + g1*m2$coefficients[[3]] 
+# + f1*m2$coefficients[[4]] + abs*m2$coefficients[[5]]+ schsup*m2$coefficients[[6]]
+# + h2*m2$coefficients[[7]]
+```
+
+## Question 4
+Predicting the final grade for a new student with the following data and then calculating the 95% Confidence Interval for the prediction.
+```{r Question1.4}
+g2 <- 13
+g1 <- 14
+f1 <- 0
+abs <- 3
+schsup <- 0
+h2 <- 0
+new <- c(g2,g1,f1,abs,schsup,h2)
+g3 <- m2$coefficients[[1]] + g2*m2$coefficients[[2]] + g1*m2$coefficients[[3]] + 
+  f1*m2$coefficients[[4]] + abs*m2$coefficients[[5]] + schsup*m2$coefficients[[6]] +
+  h2*m2$coefficients[[7]]
+
+# Prediction for new student
+g3
+
+# Confindence interval for prediction
+CI <- c(g3 - 1.96*1.877, g3 + 1.96*1.877)
+CI
+```
+
+## Question 5
+Calculating the RMSE for the multiple regression model
+```{r Question1.5}
+finalmodel <- lm(m2$call[[2]], data)
+pred <- predict(finalmodel, data)
+rmse1_lm <- sqrt(mean((data$G3 - pred)^2))
+rmse2_lm <- sqrt(mean((finalmodel$residuals)^2))
+paste("RMSE for Multiple Regression -", rmse2_lm)
+```
+
+# Problem 2
+
+## Question 1
+Adding a Pass/Fail column based on the G3 column.
+
+Next, converting the new column into dummy codes.
+```{r Question2.1}
+data$PF <- ifelse(data$G3<10, 'F', 'P')
+data$PF10 <- ifelse(data$PF == 'P', 1, 0)
+```
+
+## Question 2
+Generating a logistic regression model for the Pass/fail dummy codes column using age, Medu, goout1, goout2, goout3, goout4, G1, G2, G3, F0, F1, absences, schoolsup.
+
+Next, using stepwise backward elimination to remove all non-significant variables from the model.
+```{r Question2.2}
+data$goout1 <- ifelse(data$goout == 1, 1, 0)
+data$goout2 <- ifelse(data$goout == 2, 1, 0)
+data$goout3 <- ifelse(data$goout == 3, 1, 0)
+data$goout4 <- ifelse(data$goout == 4, 1, 0)
+
+model_logreg <- glm(PF10 ~ age + Medu + goout1 + goout2 + goout3 + goout4 + 
+                      G1 + G2 + G3 + F0 +F1 + absences + schoolsup, data = data)
+model_logreg2 <- step(model_logreg, direction = "backward")
+```
+
+## Question 3
+Displaying the model with only the significant variables
+```{r Question2.3}
+model_logreg2$call[[2]]
+```
+
+## Question 4
+Using the model to make predictions using the entire dataset. 
+
+Since logistic regression models result in possibilities ie. continuous values, using a threshold of 0.5 to convert them in to binary values.
+
+Calculating the RMSE for the logistic regression model.
+```{r Question2.4}
+final_logreg <- glm(model_logreg2$call[[2]], data = data)
+pred <- predict(final_logreg, data)
+pred <- ifelse(pred < 0.5, 0, 1)
+rmse1_glm <- sqrt(mean((data$PF10 - pred)^2))
+rmse2_glm <- sqrt(mean(round(final_logreg$residuals)^2))
+paste("RMSE for Logistic Regression -", rmse2_glm)
+```
+
+# Problem 3
+
+## Question 1
+
+### Step 1 - Collecting Data
+```{r Question3.1.1}
+wine <- read.csv("whitewines.csv")
+```
+
+### Step 2 - Exploring and preparing the data 
+Creating the train and test datasets.
+```{r Question3.1.2}
+str(wine)
+hist(wine$quality) 
+wine_train <- wine[1:3750, ] 
+wine_test <- wine[3751:4898, ]
+```
+
+### Step 3 - Training a model on the data
+Using the rpart function with the training data.
+
+Next, using rpart.plot to viualize the model.
+```{r Question3.1.3}
+library(rpart)
+library(rpart.plot) 
+m.rpart <- rpart(quality ~ ., data = wine_train)
+m.rpart
+
+# Visualizing decision trees
+rpart.plot(m.rpart, digits = 3)
+
+rpart.plot(m.rpart, digits = 4, fallen.leaves = TRUE, type = 3, extra = 101)
+```
+
+### Step 4 - Evaluating model performance 
+Using the model to make predictions.
+
+Next, finding the Mean Absolute Error for the model and its predictions
+```{r Question3.1.4}
+p.rpart <- predict(m.rpart, wine_test)
+summary(p.rpart)
+summary(wine_test$quality)
+cor(p.rpart, wine_test$quality)
+
+# Measuring performance with the mean absolute error 
+MAE <- function(actual, predicted) 
+{
+  mean(abs(actual - predicted)) 
+} 
+
+MAE(p.rpart, wine_test$quality)
+
+mean(wine_train$quality)
+MAE(5.89, wine_test$quality)
+```
+
+### Step 5 - Improving model performance
+Using the M5P function from the Rweka package.
+
+Next, finding the MAE for this model.
+```{r Question3.1.5}
+library(RWeka)
+m.m5p <- M5P(quality ~ ., data = wine_train)
+m.m5p
+summary(m.m5p)
+p.m5p <- predict(m.m5p, wine_test)
+summary(p.m5p)
+cor(p.m5p, wine_test$quality)
+MAE(wine_test$quality, p.m5p)
+```
+
+## Question 2
+RMSEs for the two models used above.
+```{r Question3.2}
+rmse_rpart <- sqrt(mean((wine_test$quality - p.rpart)^2))
+paste("RMSE for Rpart model -", rmse_rpart)
+rmse_m5p <- sqrt(mean((wine_test$quality - p.m5p)^2))
+paste("RMSE for M5P model - ", rmse_m5p)
+```

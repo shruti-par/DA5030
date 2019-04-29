@@ -1,0 +1,117 @@
+---
+title: "DA5030.A8.Parpattedar"
+author: "Shruti Parpattedar"
+date: "April 1, 2019"
+output: pdf_document
+---
+
+# Problem 1
+
+## Step 1 - Collecting data
+Downloading and loading the SNS dataset.
+```{r Question1.1}
+teens <- read.csv("snsdata.csv")
+```
+
+## Step 2 - Exploring and preparing the data 
+Exploring the dataset. NAs where found in Gender and Age attributes.
+
+The age attribute was altered such that only those in the range of 13 and 20 retained their values, the others were changed to NA.
+
+Dummy coding the gender column into a column with 1 if female and 0 otherwise.
+no_gender column is 1 is the gender value is NA else 0.
+
+Replacing the NA values in Age with the mean grouped based on the grad year.
+
+```{r Question1.2}
+str(teens)
+table(teens$gender)
+table(teens$gender, useNA = "ifany")
+summary(teens$age)
+teens$age <- ifelse(teens$age >= 13 & teens$age < 20, teens$age, NA)
+summary(teens$age)
+
+# Data preparation – dummy coding missing values
+teens$female <- ifelse(teens$gender == "F" & !is.na(teens$gender), 1, 0) 
+teens$no_gender <- ifelse(is.na(teens$gender), 1, 0)
+table(teens$gender, useNA = "ifany")
+table(teens$female, useNA = "ifany")
+table(teens$no_gender, useNA = "ifany")
+
+# Data preparation – imputing the missing values
+mean(teens$age)
+mean(teens$age, na.rm = TRUE)
+aggregate(data = teens, age ~ gradyear, mean, na.rm = TRUE)
+ave_age <- ave(teens$age, teens$gradyear, FUN = function(x) mean(x, na.rm = TRUE))
+teens$age <- ifelse(is.na(teens$age), ave_age, teens$age)
+summary(teens$age)
+```
+
+## Step 3 – Training a model on the data
+Taking the attributes with only numeric values and applying z-scale to them.
+
+Applying the kmeans function with 5 centers to the scaled dataset.
+```{r Question1.3}
+library(stats)
+interests <- teens[5:40]
+interests_z <- as.data.frame(lapply(interests, scale))
+set.seed(2345)
+teen_clusters <- kmeans(interests_z, 5)
+```
+
+## Step 4 – Evaluating model performance
+Displaying the cluster size and centers
+```{r Question1.4}
+teen_clusters$size
+teen_clusters$centers
+```
+
+## Step 5 – Improving model performance
+Setting the cluster number to each value in the dataset.
+
+Applying the aggregate function to age, female and friends column to calculate the mean grouped by the clusters.
+```{r Question1.5}
+teens$cluster <- teen_clusters$cluster
+teens[1:5, c("cluster", "gender", "age", "friends")]
+aggregate(data = teens, age ~ cluster, mean)
+aggregate(data = teens, female ~ cluster, mean)
+aggregate(data = teens, friends ~ cluster, mean)
+
+```
+
+# Problem 2
+
+## What are some of the key differences between SVM and Random Forest for classification? When is each algorithm appropriate and preferable? Provide examples.
+
+SVM is essentially suited for two-class problems; for multiclass problems, it will need to be reduced to multiple binary classification problems. On the other hand, Random Forest is essentially suited for multiclass problems. 
+
+“Margin” is maximized in SVM, thus making it rely on the concept of "distance" between different points. Random forest works well with a mix of both categorical and numerical features. 
+
+For example, for a classification problem, SVM gives you distance to the boundary, it will still be required to convert it to a probability. Conversely, Random Forest directly gives you probability of belonging to a class. 
+
+For problems where SVM can be applied, it generally works better than Random Forests.
+
+
+## Why might it be preferable to include fewer predictors over many?
+Using a higher number of predictors increases the complexity of the model. The training error decreases as this complexity increases, but this leads to problems like overfitting. 
+
+The aim of a model is to be trained on the training dataset but be generalized enough to be applicable to the dataset from which the training dataset was taken. So, if higher number of predictors are considered the model gives rise to higher error rates when used with real data. 
+
+Thus, it makes more sense to use fewer but more significant predictors than using more predictors just to cover all the data. Reducing the number of predictors also reduces the problem of overfitting.
+
+
+## You are asked to provide R-Squared for a kNN regression model. How would you respond to that request?
+kNN regression model is an algorithm which stores all the given cases and uses them to predict the numerical target based on a similarity measure. 
+
+R-squared is a measure of goodness of fit of a linear model to the data and depicts what percent of variance in the data has been represented by the model. It is used for regression analysis.
+
+R-squared can be provided for kNN regression since numerical values are being predicted. But, for classification using kNN there are better measures for goodness of fit. Accuracy or ROC or mean average precision are some of the evaluation metrics that could be used for kNN classification instead of R-squared.
+
+
+## How can you determine which features to include when building a multiple regression model?
+There are multiple ways to determine which features to include in a multiple regression model; such as  forward and backward fitting using either p-value, Adjusted R-Squared, or AIC. 
+
+Initially start with the features with the highest correlation with the dependent variable and apply regression function to it. A summary of this model will result in a table containing the p-values for each of the features included in the model. It also indicates the statistically significant features for that model. Using this information, the least significant features can be eliminated to be left with only the significant features. This is known as stepwise backward elimination. 
+
+Using p-values is one of the values of backward elimination. We can also use the step() function which fits a model based on the AIC values of each feature.
+ 
